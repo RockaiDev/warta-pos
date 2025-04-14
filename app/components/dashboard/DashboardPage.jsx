@@ -76,10 +76,6 @@ export default function DashboardPage({ User }) {
 
     useEffect(() => {
         GetData()
-
-
-        const refresh = setInterval(GetData, 2000)
-        return () => clearInterval(refresh)
     }, [startDate, endDate, filterBranch]);
 
 

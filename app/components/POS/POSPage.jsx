@@ -19,15 +19,9 @@ export default function POSPage({ User }) {
 
   const GetData = async () => {
     try {
-      const shiftsFts = await fetch('/api/shifts', {
-        cache: "no-store"
-      })
-      const itemsFts = await fetch('/api/items', {
-        cache: 'no-store'
-      })
-      const branchesFts = await fetch('/api/branches', {
-        cache: "no-store"
-      })
+      const shiftsFts = await fetch('/api/shifts')
+      const itemsFts = await fetch('/api/items')
+      const branchesFts = await fetch('/api/branches')
 
       const shiftResult = await shiftsFts.json()
       setShifts(shiftResult.shifts)
