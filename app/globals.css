@@ -1,0 +1,53 @@
+@import url("https://fonts.googleapis.com/css2?family=Alexandria:wght@100..900&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  direction: rtl;
+}
+
+.mSection {
+  @apply w-full h-full flex items-center justify-start flex-col p-4 overflow-auto;
+}
+.mSection > h2 {
+  @apply text-2xl font-bold my-10;
+}
+
+input,
+select,
+textarea {
+  @apply px-4 py-1 font-semibold text-base rounded-full outline-none bg-bgColor border-2 border-black focus:shadow-xl;
+  direction: rtl;
+}
+
+.addBtn {
+  @apply bg-bgColor text-black flex items-center justify-center shadow-xl font-medium sm:m-2 py-1 px-4 border-2 border-black rounded-full cursor-pointer text-sm m-0.5 hover:bg-black hover:text-bgColor duration-700;
+}
+.addBtn svg {
+  @apply ml-2 duration-700;
+}
+
+.cbtn {
+  @apply py-1 px-2 m-0.5 sm:m-2 w-24 rounded-full flex items-center justify-center hover:bg-black hover:text-bgColor cursor-pointer;
+}
+
+.submitBtn {
+  @apply text-bgColor bg-mainColor font-bold text-base flex items-center justify-center py-1 px-4 border-2 border-black rounded-full cursor-pointer w-full;
+}
+
+@media print {
+  .InvoiceContainer > * {
+    display: none;
+  }
+  .InvoiceContainer .Invoice {
+    display: flex;
+    z-index: 100;
+  }
+}
+
+td,th {
+  text-align: start;
+  border-bottom: 1px solid black ;
+  padding: 5px 0px;
+}
