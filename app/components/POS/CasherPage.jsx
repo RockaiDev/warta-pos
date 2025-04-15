@@ -429,6 +429,10 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
             setAlert(`العميل موجود بالفعل باسم ${clientExist.name}`)
             return
         }
+        if (!clientName || !clientPhone || !clientAddress) {
+            setAlert('كل البيانات مطلوبة')
+            return
+        }
         try {
             const res = await fetch('/api/clients', {
                 method: "POST",
