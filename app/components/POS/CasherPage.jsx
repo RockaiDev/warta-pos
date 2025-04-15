@@ -2,8 +2,9 @@
 import Image from 'next/image'
 import React, { useState } from 'react'
 
-export default function CasherPage({ shift, items, User, clients }) {
+export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [category, setCategory] = useState('')
+    const [clients, setClients] = useState(clientsFromDB)
     const [invoices, setInvoices] = useState(shift.invoices)
     const [showInvoices, setShowInvoices] = useState(false)
     const [expenses, setExpenses] = useState(shift.expenses)
@@ -435,10 +436,12 @@ export default function CasherPage({ shift, items, User, clients }) {
 
                     'Content-type': 'application/json'
                 },
-                body: JSON.stringify({ name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints })
+                body: JSON.stringify({ name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints, _id : clients.length + 1 })
             })
 
             if (res.ok) {
+                const Allclients = [...clients, { name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints, orders: [] }]
+                setClients(Allclients)
                 setAlert('تم إضافة العميل بنجاح')
                 setClientName('')
                 setClientPhone('')

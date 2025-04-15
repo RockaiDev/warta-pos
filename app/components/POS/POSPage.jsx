@@ -137,7 +137,7 @@ export default function POSPage({ User }) {
 
       return (
         <>
-          <CasherPage shift={shifts.find(shift => shift._id === openShift)} items={items} User={User} clients={clients} />
+          <CasherPage shift={shifts.find(shift => shift._id === openShift)} items={items} User={User} clientsFromDB={clients} />
         </>
       )
     }
