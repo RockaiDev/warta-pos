@@ -5,6 +5,10 @@ import React, { useState } from 'react'
 export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [category, setCategory] = useState('')
     const [clients, setClients] = useState(clientsFromDB)
+    const invoicesFromLocalStorage = JSON.parse(localStorage.getItem('invoices'))
+    if (!invoicesFromLocalStorage) {
+        localStorage.setItem('invoices', JSON.stringify([]))
+    }
     const [invoices, setInvoices] = useState(shift.invoices)
     const [showInvoices, setShowInvoices] = useState(false)
     const [expenses, setExpenses] = useState(shift.expenses)
@@ -234,6 +238,9 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
             if (client === 'delivery') {
                 AddOrderToClient()
             }
+
+            localStorage.setItem('invoices', JSON.stringify(invoicesHandle))
+
         } else {
             setAlert('لا يوجد شيء في الفاتورة')
         }
@@ -258,7 +265,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 body: JSON.stringify({ invoices })
             })
 
-            
+
             if (resInvoice.ok && resShift.ok) {
                 setAlert('تم إنشاء الطلب بنجاح')
                 setItemsInOrder([])
@@ -287,7 +294,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                         setClientDelivery(0)
                         setClientPoints(0)
                     }
-    
+
                 }
             }
 
@@ -298,6 +305,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
 
 
     const updateShift = async () => {
+        setAlert('جاري تحديث الوردية..')
+        localStorage.setItem('invoices', JSON.stringify(invoices))
         try {
             const resShift = await fetch(`/api/shifts/${shift._id}`, {
                 method: "PUT",
@@ -347,6 +356,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const CloseShift = async () => {
         const confirmed = confirm('هل تريد اغلاق الوردية؟')
         if (confirmed) {
+            setAlert('جاري اغلاق الوردية..')
+            localStorage.removeItem('invoices')
             try {
                 const res = await fetch(`/api/shifts/${shift._id}`, {
                     method: "PUT",
@@ -357,6 +368,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 })
 
                 if (res.ok) {
+                    setAlert('جاري طباعة التقرير..')
                     window.print()
                     location.reload()
                 }
@@ -383,7 +395,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const DeleteShift = async (id) => {
         const confirmed = confirm('هل تريد إلغاء الوردية؟\nلن تتمكن من استعادة البيانات مجدداً')
         if (confirmed) {
-
+            setAlert('جاري حذف الوردية..')
+            localStorage.removeItem('invoices')
             try {
                 const res = await fetch(`/api/shifts/${id}`, {
                     method: 'DELETE'
@@ -440,7 +453,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
 
                     'Content-type': 'application/json'
                 },
-                body: JSON.stringify({ name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints, _id : clients.length + 1 })
+                body: JSON.stringify({ name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints, _id: clients.length + 1 })
             })
 
             if (res.ok) {
@@ -502,12 +515,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
         const matchedClient = client.name.toLowerCase().includes(searchClient.toLowerCase())
         const matchedPhone = client.phone.includes(searchClient)
         return matchedClient || matchedPhone
-    })
-
-
-
-
-
+    }).reverse()
 
 
     const FormatedDate = (date) => {
@@ -517,6 +525,16 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
         const formattedDate = CreateDate.toLocaleString('ar-EG', options);
         return formattedDate
     }
+
+
+
+    invoices.map(invoice => {
+        console.log(invoicesFromLocalStorage?.some(localInvoice => localInvoice.id === invoice.id))
+    })
+
+
+
+
 
     return (
         <>
@@ -574,7 +592,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                                 setDiscount(invoice.discount)
                                 setInvoiceId(invoice.id)
                                 setIndexToDelete(ind)
-                            }} className="invoice cursor-pointer hover:bg-slate-50 hover:border-mainColor border-2 bg-gray-300 w-full p-2 flex items-center justify-between rounded-xl my-1" key={ind}>
+                            }} className={`invoice cursor-pointer hover:bg-slate-50 hover:border-mainColor border-2 w-full p-2 flex items-center justify-between rounded-xl my-1 ${invoicesFromLocalStorage?.some(localInvoice => localInvoice.id === invoice.id) ? "bg-gray-300" : "bg-red-200"}`} key={ind}>
                                 <h4 className='font-bold items-center text-xl'>{ind + 1} -</h4>
                                 <h4><span className='font-bold items-center'>الإجمالي: </span>{invoice.total} ج.م</h4>
                                 <h4><span className='font-bold hidden md:flex items-center'>الاصناف: </span>{invoice.items.length} أصناف</h4>
@@ -586,6 +604,15 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                     </div>
                 )}
             </div>
+            {/* Update Shift */}
+            <div className="updateShift w-full flex items-start justify-center flex-col my-10">
+                <h2 className='text-xl mb-4 font-bold'>تحديث الوردية:</h2>
+                <div className="updateShiftBtn w-10/12 flex items-center justify-start flex-wrap">
+                    <div onClick={updateShift} className="btn text-sm p-2 bg-mainColor w-96 text-center text-bgColor font-bold rounded-lg cursor-pointer mx-2">تحديث الوردية</div>
+                </div>
+            </div>
+
+
             <div className='w-full flex items-start justify-center flex-col lg:flex-row lg:justify-start my-5'>
                 <div className={`itemsList w-full lg:w-8/12 lg:ml-5 border-mainColor rounded-xl p-2 border my-2 lg:my-0`}>
                     <div className="categoriesList flex flex-wrap justify-center items-center">

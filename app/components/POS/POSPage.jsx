@@ -3,12 +3,9 @@ import React, { useEffect, useState } from 'react'
 import Loading from '../main/Loading'
 import { useRouter } from 'next/navigation'
 import CasherPage from './CasherPage'
+import { useDataContext } from '../context/DataContext'
 
 export default function POSPage({ User }) {
-  const [shifts, setShifts] = useState(null)
-  const [items, setItems] = useState(null)
-  const [branches, setBranches] = useState(null)
-  const [clients, setClients] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [casher, setcasher] = useState(User.name)
   const [branch, setbranch] = useState(User.branch)
@@ -17,41 +14,11 @@ export default function POSPage({ User }) {
 
   const router = useRouter()
 
-  const GetData = async () => {
-    try {
-      const shiftsFts = await fetch('/api/shifts', {
-        cache: "no-store"
-      })
-      const itemsFts = await fetch('/api/items', {
-        cache: 'no-store'
-      })
-      const branchesFts = await fetch('/api/branches', {
-        cache: "no-store"
-      })
-      const clientsFts = await fetch('/api/clients', {
-        cache: "no-store"
-      })
-
-      const shiftResult = await shiftsFts.json()
-      setShifts(shiftResult.shifts)
-      const itemResult = await itemsFts.json()
-      setItems(itemResult.items)
-      const branchResult = await branchesFts.json()
-      setBranches(branchResult.branches)
-      const clientResult = await clientsFts.json()
-      setClients(clientResult.clients)
-      
-
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    GetData()
-  }, [])
+  const { branches, shifts, items, clients } = useDataContext()
+  
+    if (!shifts || !branches || !items || !clients) {
+      return <Loading />
+    } else {
 
   const OpenShift = async (e) => {
     e.preventDefault()
@@ -88,10 +55,6 @@ export default function POSPage({ User }) {
     return formattedDate
   }
 
-
-  if (isLoading) {
-    return <Loading />
-  } else {
 
     const filteredShifts = shifts.filter(shift => {
       const OpendShifts = shift.status === 'open'

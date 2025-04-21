@@ -1,3 +1,4 @@
+import DataProvider from "./components/context/DataContext";
 import "./globals.css";
 
 
@@ -10,7 +11,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ar">
       <body className="h-screen relative flex font-mainFont" suppressHydrationWarning={true}>
-        {children}
+        <DataProvider>
+          {children}
+        </DataProvider>
       </body>
     </html>
   );
