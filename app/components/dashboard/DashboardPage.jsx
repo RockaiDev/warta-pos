@@ -278,11 +278,6 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 </div>
-                <div className="invoicesList w-full flex flex-col items-start justify-center">
-                    <h2 className='text-xl font-bold'>الفواتير: {checkInvoice.length}</h2>
-                    <div className="invoices flex flex-wrap items-center justify-center w-full">
-                    </div>
-                </div>
                 {showShiftsList && (
                     <>
                         <div className="shiftsList w-full flex flex-col items-start justify-center">
