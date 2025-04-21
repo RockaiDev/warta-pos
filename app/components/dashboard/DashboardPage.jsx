@@ -6,69 +6,67 @@ import * as XLSX from 'xlsx'
 import { useDataContext } from '../context/DataContext';
 
 
-export default function DashboardPage({ User }) {
-    const [filteredexpenses, setFilteredexpenses] = useState([])
-    const [filteredinvoices, setFilteredinvoices] = useState([])
-    const [filteredsalaries, setFilteredsalaries] = useState([])
-    const [filteredshifts, setFilteredshifts] = useState([])
+export default function DashboardPage() {
+    const [filteredexpenses, setFilteredexpenses] = useState()
+    const [filteredinvoices, setFilteredinvoices] = useState()
+    const [filteredsalaries, setFilteredsalaries] = useState()
+    const [filteredshifts, setFilteredshifts] = useState()
     const [filterBranch, setFilterBranch] = useState("All")
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const [startDate, setStartDate] = useState(startOfDay);
     const [endDate, setEndDate] = useState(now);
+    const [showShiftsList, setShowShiftsList] = useState(false)
+    const [report, setreport] = useState(null)
+    const [printingReport, setPrintingReport] = useState(false)
 
     const { expenses, invoices, salaries, shifts, branches } = useDataContext()
 
     if (!expenses || !invoices || !salaries || !shifts || !branches) {
         return <Loading />
     } else {
-
-
-        useEffect(() => {
-            filterData(startDate, endDate);
-        }, [startDate, endDate, filterBranch]);
-
+        
         const filterData = (start, end) => {
             const filteredExp = expenses.filter(expense => {
-            const expDate = new Date(expense.createdAt);
-            if (filterBranch !== "All" && filterBranch !== "") {
-                const branchFilter = expense.branch === filterBranch;
-                return expDate >= start && expDate <= end && branchFilter;
-            } else {
-                return expDate >= start && expDate <= end;
-            }
+                const expDate = new Date(expense.createdAt);
+                if (filterBranch !== "All" && filterBranch !== "") {
+                    const branchFilter = expense.branch === filterBranch;
+                    return expDate >= start && expDate <= end && branchFilter;
+                } else {
+                    return expDate >= start && expDate <= end;
+                }
             });
 
             const filteredInv = invoices.filter(invoice => {
-            const invoiceDate = new Date(invoice.createdAt);
-            if (filterBranch !== "All" && filterBranch !== "") {
-                const branchFilter = invoice.branch === filterBranch;
-                return invoiceDate >= start && invoiceDate <= end && branchFilter;
-            } else {
-                return invoiceDate >= start && invoiceDate <= end;
-            }
+                const invoiceDate = new Date(invoice.createdAt);
+                if (filterBranch !== "All" && filterBranch !== "") {
+                    const branchFilter = invoice.branch === filterBranch;
+                    return invoiceDate >= start && invoiceDate <= end && branchFilter;
+                } else {
+                    return invoiceDate >= start && invoiceDate <= end;
+                }
             });
 
             const filteredSly = salaries.filter(salary => {
-            const salaryDate = new Date(salary.createdAt);
-            if (filterBranch !== "All" && filterBranch !== "") {
-                const branchFilter = salary.branch === filterBranch;
-                return salaryDate >= start && salaryDate <= end && branchFilter;
-            } else {
-                return salaryDate >= start && salaryDate <= end;
-            }
+                const salaryDate = new Date(salary.createdAt);
+                if (filterBranch !== "All" && filterBranch !== "") {
+                    const branchFilter = salary.branch === filterBranch;
+                    return salaryDate >= start && salaryDate <= end && branchFilter;
+                } else {
+                    return salaryDate >= start && salaryDate <= end;
+                }
             });
 
             const filteredShft = shifts.filter(shift => {
-            const shiftDate = new Date(shift.createdAt);
-            const closed = shift.status === 'close';
-            if (filterBranch !== "All" && filterBranch !== "") {
-                const branchFilter = shift.branch === filterBranch;
-                return shiftDate >= start && shiftDate <= end && closed && branchFilter;
-            } else {
-                return shiftDate >= start && shiftDate <= end && closed;
-            }
+                const shiftDate = new Date(shift.createdAt);
+                const closed = shift.status === 'close';
+                if (filterBranch !== "All" && filterBranch !== "") {
+                    const branchFilter = shift.branch === filterBranch;
+                    return shiftDate >= start && shiftDate <= end && closed && branchFilter;
+                } else {
+                    return shiftDate >= start && shiftDate <= end && closed;
+                }
             });
 
             setFilteredexpenses(filteredExp);
@@ -76,6 +74,12 @@ export default function DashboardPage({ User }) {
             setFilteredsalaries(filteredSly);
             setFilteredshifts(filteredShft);
         };
+        
+        useEffect(() => {
+            filterData(startDate, endDate);
+        }, [startDate, endDate, filterBranch]);
+
+
 
         const handleDateChange = (start, end) => {
             setStartDate(start);
@@ -83,9 +87,6 @@ export default function DashboardPage({ User }) {
         };
 
         // Handle Shifts *********************
-        const [showShiftsList, setShowShiftsList] = useState(false)
-        const [report, setreport] = useState(null)
-        const [printingReport, setPrintingReport] = useState(false)
 
         const shiftTotalIncome = () => {
             let shiftIncome = 0
