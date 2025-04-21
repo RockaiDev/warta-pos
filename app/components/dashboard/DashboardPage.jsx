@@ -23,10 +23,20 @@ export default function DashboardPage() {
 
     const { expenses, invoices, salaries, shifts, branches } = useDataContext()
 
+
+    useEffect(() => {
+        filterData(startDate, endDate);
+    }, [startDate, endDate, filterBranch]);
+
     if (!expenses || !invoices || !salaries || !shifts || !branches) {
         return <Loading />
     } else {
-        
+
+        const handleDateChange = (start, end) => {
+            setStartDate(start);
+            setEndDate(end);
+        };
+
         const filterData = (start, end) => {
             const filteredExp = expenses.filter(expense => {
                 const expDate = new Date(expense.createdAt);
@@ -74,17 +84,9 @@ export default function DashboardPage() {
             setFilteredsalaries(filteredSly);
             setFilteredshifts(filteredShft);
         };
-        
-        useEffect(() => {
-            filterData(startDate, endDate);
-        }, [startDate, endDate, filterBranch]);
 
 
 
-        const handleDateChange = (start, end) => {
-            setStartDate(start);
-            setEndDate(end);
-        };
 
         // Handle Shifts *********************
 
