@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  swcMinify: false // Disable SWC minification temporarily
+};
 
 export default nextConfig;
