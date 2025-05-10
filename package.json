@@ -16,7 +16,8 @@
     "react-datepicker": "^6.9.0",
     "react-dom": "^18",
     "xlsx": "^0.18.5",
-    "autoprefixer": "^10.4.17"
+    "autoprefixer": "^10.4.17",
+    "@swc/core": "^1.4.8"
   },
   "devDependencies": {
     "eslint": "^8",
