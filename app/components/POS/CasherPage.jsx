@@ -1,6 +1,7 @@
 'use client'
 import Image from 'next/image'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import socket from '@/libs/socket'
 
 export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [category, setCategory] = useState('')
@@ -14,6 +15,76 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [expenses, setExpenses] = useState(shift.expenses)
     const [showAddExpense, setShowAddExpense] = useState(false)
     const [alert, setAlert] = useState('')
+    
+    // نظام الطلبات
+    const [notifications, setNotifications] = useState([])
+    const [showNotifications, setShowNotifications] = useState(false)
+    const [unreadCount, setUnreadCount] = useState(0)
+
+    // Socket.IO listeners
+    useEffect(() => {
+        // للتحقق من الاتصال
+        socket.on("connect", () => {
+            console.log("✅ السيرفر شغال زي الفل - Socket ID:", socket.id);
+        });
+
+        // للتحقق من الأخطاء
+        socket.on("connect_error", (error) => {
+            console.error("❌ خطأ في الاتصال:", error.message);
+        });
+
+        // عشان اتاكد ان الي طالب طلب الاوردر
+        socket.on('newOrderNotification', (data) => {
+            console.log('✅ تأكيد الطلب:', data);
+            setAlert(data.message);
+        });
+
+        // استقبال إشعارات الطلبات الجديدة
+        socket.on('newOrderNotification', (data) => {
+            console.log(data.order);
+            console.log({
+                type: data.order.type,
+                phone: data.order.phone,
+                totalPrice: data.order.totalPrice,
+                itemsCount: data.order.itemsCount,
+                paymentMethod: data.order.paymentMethod,
+                timestamp: data.order.timestamp
+            });
+            
+            // إضافة الإشعار للقائمة
+            const newNotification = {
+                id: Date.now(),
+                message: `طلب جديد! رقم الهاتف: ${data.order.phone || 'غير محدد'}`,
+                order: data.order,
+                isRead: false,
+                createdAt: new Date(),
+                timestamp: data.order.timestamp || new Date().toISOString()
+            };
+            
+            setNotifications(prev => {
+                const updatedNotifications = [newNotification, ...prev];
+                // حفظ في localStorage
+                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+                return updatedNotifications;
+            });
+            setUnreadCount(prev => prev + 1);
+        });
+
+        // استرجاع الطلبات من localStorage
+        const savedNotifications = localStorage.getItem('notifications');
+        if (savedNotifications) {
+            const parsedNotifications = JSON.parse(savedNotifications);
+            setNotifications(parsedNotifications);
+            setUnreadCount(parsedNotifications.filter(n => !n.isRead).length);
+        }
+
+        return () => {
+            socket.off('connect');
+            socket.off('connect_error');
+            socket.off('orderConfirmation');
+            socket.off('newOrderNotification');
+        };
+    }, []);
 
     const FilterdItems = items.filter(item => {
         const matchedCategory = !category || item.category === category
@@ -144,6 +215,79 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
         }
     }
 
+    // دوال إدارة الطلبات
+    const markAsRead = (notificationId) => {
+        setNotifications(prev => {
+            const updated = prev.map(notif => 
+                notif.id === notificationId 
+                    ? { ...notif, isRead: true }
+                    : notif
+            );
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+
+    const markAllAsRead = () => {
+        setNotifications(prev => {
+            const updated = prev.map(notif => ({ ...notif, isRead: true }));
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(0);
+    }
+
+    const deleteNotification = (notificationId) => {
+        setNotifications(prev => {
+            const updated = prev.filter(notif => notif.id !== notificationId);
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+
+    // دالة إنشاء فاتورة من الطلب
+    const createInvoiceFromNotification = (orderData) => {
+        if (!orderData) return;
+        
+        // إنشاء فاتورة جديدة من بيانات الطلب
+        const newInvoice = {
+            client: orderData.phone || 'Take Away',
+            items: [], // لا توجد تفاصيل المنتجات في البيانات
+            total: orderData.totalPrice || 0,
+            discount: 0,
+            taxs: 0,
+            delivery: 0,
+            user: User.name,
+            payment: orderData.paymentMethod || 'Cash',
+            branch: shift.branch,
+            id: invoices.length + 1
+        };
+        
+        // إضافة الفاتورة للقائمة
+        const updatedInvoices = [...invoices, newInvoice];
+        setInvoices(updatedInvoices);
+        localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
+        
+        setAlert('تم إنشاء الفاتورة من الطلب بنجاح');
+        setShowNotifications(false);
+    }
+
+    // إغلاق popup عند النقر خارجه
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (showNotifications && !event.target.closest('.notification-popup')) {
+                setShowNotifications(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showNotifications]);
+
     // Handle Expenses **********************
 
 
@@ -265,9 +409,29 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 body: JSON.stringify({ invoices })
             })
 
-
             if (resInvoice.ok && resShift.ok) {
-                setAlert('تم إنشاء الطلب بنجاح')
+                // إرسال الطلب عبر Socket.IO
+                const orderData = {
+                    id: invoice.id,
+                    client: client,
+                    items: itemsInOrder,
+                    total: mainTotalItemsPrice(),
+                    discount: discount,
+                    taxs: taxs,
+                    delivery: delivery,
+                    payment: payment,
+                    branch: shift.branch,
+                    user: User.name,
+                    phone: client === 'delivery' && clientSelected ? JSON.parse(clientSelected).phone : 'Take Away',
+                    address: client === 'delivery' && clientSelected ? JSON.parse(clientSelected).address : '',
+                    timestamp: new Date().toISOString()
+                };
+
+                //إرسال الطلب الجديد للسيرفر
+                socket.emit('newOrder', orderData);
+                console.log('📤 تم إرسال الطلب:', orderData);
+
+                setAlert('تم إنشاء الطلب بنجاح');
                 setItemsInOrder([])
                 setDiscount(0)
                 setDelivery(0)
@@ -335,19 +499,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     // Handle Invoice ************************
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     // Close Shift ****************************
     const [showReport, setShowReport] = useState(false)
 
@@ -381,10 +532,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
 
 
     // Close Shift ****************************
-
-
-
-
 
 
 
@@ -548,6 +695,17 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 <ul className='flex items-center justify-center w-full'>
                     <li onClick={() => setShowAddExpense(!showAddExpense)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg></li>
                     <li onClick={() => setShowReport(!showReport)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /> </svg></li>
+                    <li onClick={() => setShowNotifications(!showNotifications)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full relative'>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                        </svg>
+                        {/* عداد الإشعارات غير المقروءة */}
+                        {unreadCount > 0 && (
+                            <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </div>
+                        )}
+                    </li>
                 </ul>
             </div>
             <h2 className='font-bold text-2xl text-start w-full mt-5'>تفاصيل الوردية:</h2>
@@ -1047,6 +1205,107 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                     </form>
                 </div>
             </div>
+
+            {/* Popup الطلبات */}
+            {showNotifications && (
+                <>
+                    {/* Overlay لإغلاق popup */}
+                    <div 
+                        className="fixed inset-0 z-30"
+                        onClick={() => setShowNotifications(false)}
+                    ></div>
+                    
+                    <div className="absolute top-20 left-6 z-40 bg-white border border-gray-300 rounded-lg shadow-xl w-96 max-h-96 overflow-hidden notification-popup">
+                        <div className="bg-mainColor text-bgColor p-4 flex items-center justify-between">
+                            <h3 className="font-bold text-lg">الطلبات</h3>
+                            <div className="flex gap-2">
+                                {unreadCount > 0 && (
+                                    <button 
+                                        onClick={markAllAsRead}
+                                        className="text-sm bg-bgColor text-mainColor px-2 py-1 rounded hover:bg-opacity-80"
+                                    >
+                                        تحديد الكل كمقروء
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={() => setShowNotifications(false)}
+                                    className="text-bgColor hover:text-gray-200"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="max-h-80 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">
+                                    لا توجد طلبات جديدة
+                                </div>
+                            ) : (
+                                notifications.map((notification) => (
+                                    <div 
+                                        key={notification.id} 
+                                        className={`p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors ${!notification.isRead ? 'bg-blue-50' : ''}`}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className={`w-2 h-2 rounded-full ${!notification.isRead ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                                                    <h4 className="font-semibold text-sm">{notification.message}</h4>
+                                                </div>
+                                                
+                                                {notification.order && (
+                                                    <div className="text-xs text-gray-600 space-y-1">
+                                                        <p><strong>نوع الطلب:</strong> {notification.order.type === 'pickup' ? 'استلام من الفرع' : notification.order.type === 'delivery' ? 'توصيل' : (notification.order.type || 'غير محدد')}</p>
+                                                        <p><strong>المجموع:</strong> {(notification.order.totalPrice || notification.order.total || 0).toString()} ج.م</p>
+                                                        <p><strong>طريقة الدفع:</strong> {notification.order.paymentMethod || notification.order.payment || 'غير محدد'}</p>
+                                                        <p><strong>عدد المنتجات:</strong> {(notification.order.itemsCount || (notification.order.items ? notification.order.items.length : 0)).toString()} منتج</p>
+                                                        {notification.order.phone && (
+                                                            <p><strong>الهاتف:</strong> {notification.order.phone}</p>
+                                                        )}
+                                                        {notification.order.timestamp && (
+                                                            <p><strong>التاريخ:</strong> {notification.order.timestamp}</p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                
+                                                <p className="text-xs text-gray-400 mt-2">
+                                                    {notification.timestamp ? notification.timestamp : new Date(notification.createdAt).toLocaleString('ar-EG')}
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="flex flex-col gap-1 ml-2">
+                                                {!notification.isRead && (
+                                                    <button 
+                                                        onClick={() => markAsRead(notification.id)}
+                                                        className="text-blue-500 hover:text-blue-700 text-xs"
+                                                    >
+                                                        تحديد كمقروء
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={() => createInvoiceFromNotification(notification.order)}
+                                                    className="text-green-500 hover:text-green-700 text-xs bg-green-50 px-2 py-1 rounded"
+                                                >
+                                                    إنشاء فاتورة
+                                                </button>
+                                                <button 
+                                                    onClick={() => deleteNotification(notification.id)}
+                                                    className="text-red-500 hover:text-red-700 text-xs"
+                                                >
+                                                    حذف
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
 
         </>
     )
