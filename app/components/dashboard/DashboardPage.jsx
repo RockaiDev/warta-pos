@@ -12,6 +12,8 @@ export default function DashboardPage() {
     const [filteredSalaries, setFilteredSalaries] = useState([]);
     const [filteredShifts, setFilteredShifts] = useState([]);
     const [filterBranch, setFilterBranch] = useState("All");
+    const [webOrders, setWebOrders] = useState([]);
+    const [isLoadingWebOrders, setIsLoadingWebOrders] = useState(true);
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -22,21 +24,6 @@ export default function DashboardPage() {
     const [printingReport, setPrintingReport] = useState(false);
 
     const { expenses, invoices, salaries, shifts, branches } = useDataContext();
-
-    useEffect(() => {
-        if (expenses && invoices && salaries && shifts && branches) {
-            filterData(startDate, endDate);
-        }
-    }, [startDate, endDate, filterBranch, expenses, invoices, salaries, shifts, branches]);
-
-    if (!expenses || !invoices || !salaries || !shifts || !branches) {
-        return <Loading />;
-    }
-
-    const handleDateChange = (start, end) => {
-        setStartDate(start);
-        setEndDate(end);
-    };
 
     const filterData = (start, end) => {
         const filterByDateAndBranch = (data, dateField) => {
@@ -58,6 +45,36 @@ export default function DashboardPage() {
                 return shiftDate >= start && shiftDate <= end && isClosed && branchFilter;
             })
         );
+    };
+
+    useEffect(() => {
+        const fetchWebOrders = async () => {
+            try {
+                const res = await fetch('/api/weborder', { cache: 'no-store' });
+                const data = await res.json();
+                setWebOrders(data.items || []);
+            } catch (error) {
+                setWebOrders([]);
+            } finally {
+                setIsLoadingWebOrders(false);
+            }
+        };
+        fetchWebOrders();
+    }, []);
+
+    useEffect(() => {
+        if (expenses && invoices && salaries && shifts && branches) {
+            filterData(startDate, endDate);
+        }
+    }, [startDate, endDate, filterBranch, expenses, invoices, salaries, shifts, branches]);
+
+    if (!expenses || !invoices || !salaries || !shifts || !branches || isLoadingWebOrders) {
+        return <Loading />;
+    }
+
+    const handleDateChange = (start, end) => {
+        setStartDate(start);
+        setEndDate(end);
     };
 
     const calculateTotal = (data, field) => {
@@ -92,6 +109,13 @@ export default function DashboardPage() {
     const totalRefunds = () => totalIncome() - (totalExpenses() + totalSalaries());
     const totalOrders = () => filteredShifts.reduce((total, shift) => total + shift.invoices.length, 0);
 
+    const filteredWebOrders = webOrders.filter(order => {
+        const orderDate = new Date(order.createdAt);
+        const branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
+        return orderDate >= startDate && orderDate <= endDate && branchFilter;
+    });
+    const totalWebOrdersMoney = filteredWebOrders.reduce((acc, order) => acc + (order.totalPrice || 0), 0);
+
     const exportedShifts = filteredShifts.map(shift => ({
         Day: formatDate(shift.createdAt),
         Close: formatDate(shift.updatedAt),
@@ -124,41 +148,45 @@ export default function DashboardPage() {
             </div>
 
             <div className="Info flex items-center justify-center sm:justify-start flex-wrap my-5 w-full">
-                <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>مجموع الدخل</h2>
                     <h3 className='text-xl text-blue-300 font-bold'>{totalIncome().toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-blue-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
                 </div>
-                <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                    <h2 className='text-2xl font-bold'>مجموع فلوس طلبات الويب</h2>
+                    <h3 className='text-xl text-purple-500 font-bold'>{totalWebOrdersMoney.toLocaleString()} ج.م</h3>
+                    <div className="color w-full p-2 bg-purple-500 rounded-full"></div>
+                </div>
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                    <h2 className='text-2xl font-bold'>عدد طلبات الويب</h2>
+                    <h3 className='text-xl text-purple-700 font-bold'>{filteredWebOrders.length.toLocaleString()} طلب</h3>
+                    <div className="color w-full p-2 bg-purple-700 rounded-full"></div>
+                </div>
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>المصاريف</h2>
                     <h3 className='text-xl text-red-500 font-bold'>{totalExpenses().toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-red-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-red-500 rounded-full"></div>
                 </div>
-                <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>مرتبات</h2>
                     <h3 className='text-xl text-pink-500 font-bold'>{totalSalaries().toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-pink-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-pink-500 rounded-full"></div>
                 </div>
-                <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>إجمالي العائدات</h2>
                     <h3 className='text-xl text-green-500 font-bold'>{totalRefunds().toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-green-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-green-500 rounded-full"></div>
                 </div>
-                <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>الطلبات</h2>
                     <h3 className='text-xl text-yellow-500 font-bold'>{totalOrders().toLocaleString()} طلب</h3>
-                    <div className="color w-full p-2 bg-yellow-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-yellow-500 rounded-full"></div>
                 </div>
                 <div onClick={() => setShowShiftsList(!showShiftsList)} className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>الورديات</h2>
                     <h3 className='text-xl text-cyan-300 font-bold'>{filteredShifts.length} وردية</h3>
-                    <div className="color w-full p-2 bg-cyan-500 rounded-full">
-                    </div>
+                    <div className="color w-full p-2 bg-cyan-500 rounded-full"></div>
                 </div>
             </div>
             {showShiftsList && (

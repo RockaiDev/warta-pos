@@ -1,6 +1,7 @@
 'use client'
 import Image from 'next/image'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import socket from '@/libs/socket'
 
 export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [category, setCategory] = useState('')
@@ -14,6 +15,22 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [expenses, setExpenses] = useState(shift.expenses)
     const [showAddExpense, setShowAddExpense] = useState(false)
     const [alert, setAlert] = useState('')
+
+    // أضف متغيرات الطلبات
+    const [notifications, setNotifications] = useState([])
+    const [showNotifications, setShowNotifications] = useState(false)
+    const [unreadCount, setUnreadCount] = useState(0)
+
+    // متغيرات طلبات الموقع
+    const [webOrders, setWebOrders] = useState([])
+    const [showWebOrders, setShowWebOrders] = useState(false)
+
+    // فواتير منفصلة حسب المصدر
+    const [cashierInvoices, setCashierInvoices] = useState([])
+    const [webInvoices, setWebInvoices] = useState([])
+
+    // 1. إضافة متغير حالة لتخزين الفاتورة المختارة
+    const [selectedInvoice, setSelectedInvoice] = useState(null);
 
     const FilterdItems = items.filter(item => {
         const matchedCategory = !category || item.category === category
@@ -235,6 +252,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
             setInvoices(invoicesHandle)
             setAlert('تم إنشاء الفاتورة')
             setShowInvoice(true)
+            setItemsInOrder([]) // تفريغ العناصر المطلوبة بعد إنشاء الفاتورة
             if (client === 'delivery') {
                 AddOrderToClient()
             }
@@ -247,25 +265,44 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     }
 
     const sendOrderAndPrint = async () => {
-
+        if (client === 'delivery' && (!clientSelected || clientSelected === 'null')) {
+            setAlert('برجاء اختيار عميل للتوصيل');
+            return;
+        }
+        let newInvoice = {
+            client: client,
+            items: [...itemsInOrder],
+            total: mainTotalItemsPrice(),
+            discount: discount,
+            taxs: taxs,
+            delivery: delivery,
+            user: User.name,
+            payment: payment,
+            branch: shift.branch,
+            id: invoices.length + 1
+        };
+        // إذا كانت فاتورة ويب أضف خاصية source: 'web'
+        if (selectedInvoice && selectedInvoice.source === 'web') {
+            newInvoice = { ...newInvoice, source: 'web' };
+        }
         try {
             const resInvoice = await fetch('/api/invoices', {
                 method: "POST",
                 headers: {
                     "Content-type": "application/json"
                 },
-                body: JSON.stringify(invoice)
+                body: JSON.stringify(newInvoice)
             })
-
+            const updatedInvoices = [...invoices, newInvoice];
+            setInvoices(updatedInvoices);
+            localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
             const resShift = await fetch(`/api/shifts/${shift._id}`, {
                 method: "PUT",
                 headers: {
                     "Content-type": 'application/json'
                 },
-                body: JSON.stringify({ invoices })
+                body: JSON.stringify({ invoices: updatedInvoices })
             })
-
-
             if (resInvoice.ok && resShift.ok) {
                 setAlert('تم إنشاء الطلب بنجاح')
                 setItemsInOrder([])
@@ -281,7 +318,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                         },
                         body: JSON.stringify({ orders: clientOrders })
                     })
-
                     if (resClient.ok) {
                         setAlert('تم إضافة الطلب للعميل')
                         setClientSelected(null)
@@ -294,10 +330,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                         setClientDelivery(0)
                         setClientPoints(0)
                     }
-
                 }
             }
-
         } catch (error) {
             console.log(error);
         }
@@ -416,10 +450,17 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     // Delete Invoice ***********************
     const [indexToDelete, setIndexToDelete] = useState(null)
     const DeleteInvoiceFromShift = (id) => {
-        const handleInvoices = [...invoices]
-        handleInvoices.splice(id, 1)
-        setInvoices(handleInvoices)
-        setIndexToDelete(null)
+        if (selectedInvoice && selectedInvoice.source === 'web') {
+            // حذف من فواتير الويب فقط
+            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id || inv.source !== 'web');
+            setInvoices(updatedInvoices);
+        } else {
+            // حذف من فواتير الكاشير فقط
+            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id || inv.source === 'web');
+            setInvoices(updatedInvoices);
+        }
+        setIndexToDelete(null);
+        setShowInvoice(false);
     }
     // Delete Invoice ***********************
 
@@ -512,7 +553,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
     const [searchClient, setSearchClient] = useState('')
     const [clientSelected, setClientSelected] = useState(null)
     const FilteredClients = clients.filter(client => {
-        const matchedClient = client.name.toLowerCase().includes(searchClient.toLowerCase())
+        const matchedClient = (client.name || "").toLowerCase().includes(searchClient.toLowerCase())
         const matchedPhone = client.phone.includes(searchClient)
         return matchedClient || matchedPhone
     }).reverse()
@@ -532,9 +573,213 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
         console.log(invoicesFromLocalStorage?.some(localInvoice => localInvoice.id === invoice.id))
     })
 
+    // استقبال الطلبات الجديدة
+    useEffect(() => {
+        socket.on('newOrderNotification', (data) => {
+            console.log(data);
 
+            const newNotification = {
+                id: Date.now(),
+                message: `طلب جديد! رقم الهاتف: ${data.order.phone || 'غير محدد'}`,
+                order: data.order,
+                isRead: false,
+                createdAt: new Date(),
+                timestamp: data.order.timestamp || new Date().toISOString()
+            };
+            setNotifications(prev => {
+                const updatedNotifications = [newNotification, ...prev];
+                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
+                return updatedNotifications;
+            });
+            setUnreadCount(prev => prev + 1);
 
+            // إضافة الطلب إلى قائمة طلبات الموقع
+            addWebOrder(data.order);
+        });
+        // استرجاع الطلبات من localStorage
+        const savedNotifications = localStorage.getItem('notifications');
+        if (savedNotifications) {
+            const parsedNotifications = JSON.parse(savedNotifications);
+            setNotifications(parsedNotifications);
+            setUnreadCount(parsedNotifications.filter(n => !n.isRead).length);
+        }
+        return () => {
+            socket.off('newOrderNotification');
+        };
+    }, []);
 
+    // فصل الفواتير حسب المصدر (العرض)
+    useEffect(() => {
+        const cashierInvs = invoices.filter(invoice => invoice.source !== 'web');
+        const webInvs = invoices.filter(invoice => invoice.source === 'web');
+        setCashierInvoices(cashierInvs);
+        setWebInvoices(webInvs);
+    }, [invoices]);
+
+    // دوال الطلبات والتنبيهات
+    const addWebOrder = (order) => {
+        const newWebOrder = {
+            id: Date.now(),
+            order: order,
+            createdAt: new Date()
+        };
+
+        setWebOrders(prev => [newWebOrder, ...prev]);
+    };
+
+    const markAsRead = (notificationId) => {
+        setNotifications(prev => {
+            const updated = prev.map(n =>
+                n.id === notificationId ? { ...n, isRead: true } : n
+            );
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(prev => Math.max(0, prev - 1));
+    };
+
+    const markAllAsRead = () => {
+        setNotifications(prev => {
+            const updated = prev.map(n => ({ ...n, isRead: true }));
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(0);
+    };
+
+    const deleteNotification = (notificationId) => {
+        setNotifications(prev => {
+            const updated = prev.filter(n => n.id !== notificationId);
+            localStorage.setItem('notifications', JSON.stringify(updated));
+            return updated;
+        });
+        setUnreadCount(prev => {
+            const notification = notifications.find(n => n.id === notificationId);
+            return notification && !notification.isRead ? Math.max(0, prev - 1) : prev;
+        });
+    };
+
+    const createInvoiceFromNotification = (orderData, notificationId) => {
+        if (!orderData) {
+            setAlert('بيانات الطلب غير صحيحة');
+            return;
+        }
+
+        // Create a single item for the total price if items array is not present
+        const invoiceItems = orderData.items ? orderData.items.map(item => ({
+            title: item.name || item.title || 'منتج غير محدد',
+            price: item.price || 0,
+            quantity: item.quantity || 1,
+            category: item.category || 'عام',
+            isSpicy: item.isSpicy || false,
+            without: item.without || ''
+        })) : [{
+            title: 'طلب موقع',
+            price: orderData.totalPrice || 0,
+            quantity: orderData.itemsCount || 1,
+            category: 'عام',
+            isSpicy: false,
+            without: ''
+        }];
+
+        setItemsInOrder(invoiceItems);
+        setClient(orderData.type === 'delivery' ? 'delivery' : 'Take Away');
+        setPayment(orderData.paymentMethod || 'Cash');
+        setDelivery(orderData.deliveryFee || 0);
+        setTaxs(0);
+        setDiscount(0);
+        setInvoiceId(Date.now());
+        setSelectedInvoice(null);
+        setShowNotifications(false);
+        setShowInvoice(true);
+        setAlert('تم تجهيز الفاتورة، الرجاء التأكيد من الأسفل');
+        if (notificationId) markAsRead(notificationId);
+    };
+
+    const createInvoiceFromWebOrder = (orderData) => {
+        if (!orderData || !Array.isArray(orderData.items) || orderData.items.length === 0) {
+            setAlert('بيانات الطلب غير صحيحة');
+            return;
+        }
+
+        const invoiceItems = orderData.items.map(item => ({
+            title: item.name || item.title || 'منتج غير محدد',
+            price: item.price || item.totalPrice || 0,
+            quantity: item.quantity || 1,
+            category: item.category || 'عام',
+            isSpicy: item.isSpicy || false,
+            without: item.without || ''
+        }));
+
+        setItemsInOrder(invoiceItems);
+        setClient(orderData.type === 'delivery' ? 'delivery' : 'Take Away');
+        setPayment(orderData.paymentMethod || orderData.payment || 'Cash');
+        setDelivery(orderData.deliveryFee || orderData.delivery || 0);
+        setTaxs(0);
+        setDiscount(orderData.discount || 0);
+        setInvoiceId(Date.now());
+        setSelectedInvoice(null);
+        setWebOrders(prev => prev.filter(order => order.order !== orderData));
+        setShowWebOrders(false);
+        setShowInvoice(true);
+        setItemsInOrder([]); // تفريغ العناصر المطلوبة بعد تجهيز الفاتورة من طلبات الموقع
+        setAlert('تم تجهيز الفاتورة، الرجاء التأكيد من الأسفل');
+    };
+
+    const updateInvoice = () => {
+        if (itemsInOrder.length > 0) {
+            const updatedInvoice = {
+                ...invoice,
+                items: itemsInOrder,
+                total: mainTotalItemsPrice(),
+                discount: discount,
+                taxs: taxs,
+                delivery: delivery,
+                payment: payment,
+                client: client
+            };
+
+            // تحديث الفاتورة في قائمة الفواتير
+            const updatedInvoices = invoices.map(inv =>
+                inv.id === updatedInvoice.id ? updatedInvoice : inv
+            );
+            setInvoices(updatedInvoices);
+
+            // تحديث في localStorage
+            localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
+
+            setAlert('تم تحديث الفاتورة بنجاح');
+            setTimeout(() => {
+                setShowInvoice(false);
+                setAlert('');
+            }, 1500);
+        } else {
+            setAlert('لا يوجد شيء في الفاتورة');
+        }
+    };
+
+    // Loyalty Points System
+    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+    const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
+    const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+    const [loyaltyError, setLoyaltyError] = useState('');
+
+    // عند اختيار العميل، جلب رصيد النقاط
+    useEffect(() => {
+        if (clientSelected && client !== 'Take Away') {
+            try {
+                const clientObj = JSON.parse(clientSelected);
+                setLoyaltyPoints(clientObj.loyaltyPoints || 0);
+            } catch {
+                setLoyaltyPoints(0);
+            }
+        } else {
+            setLoyaltyPoints(0);
+        }
+    }, [clientSelected]);
+
+    // حساب الخصم بالنقاط
+    const loyaltyDiscount = useLoyaltyPoints ? Math.floor(loyaltyPoints / 100) * 10 : 0;
 
     return (
         <>
@@ -548,14 +793,32 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 <ul className='flex items-center justify-center w-full'>
                     <li onClick={() => setShowAddExpense(!showAddExpense)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg></li>
                     <li onClick={() => setShowReport(!showReport)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /> </svg></li>
+                    <li onClick={() => setShowNotifications(!showNotifications)} className='p-2 text-bgColor cursor-pointer mx-2 hover:text-mainColor hover:bg-bgColor rounded-full relative'>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+                        </svg>
+                        {/* عداد الطلبات غير المقروءة */}
+                        {unreadCount > 0 && (
+                            <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </div>
+                        )}
+                    </li>
                 </ul>
             </div>
+
             <h2 className='font-bold text-2xl text-start w-full mt-5'>تفاصيل الوردية:</h2>
             <div className="Info flex items-center justify-center sm:justify-start flex-wrap my-5 w-full">
                 <div onClick={() => setShowInvoices(!showInvoices)} className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-gray-100">
                     <h2 className='text-2xl font-bold'>الطلبات</h2>
-                    <h3 className='text-xl text-yellow-800 font-bold'>{invoices.length} طلب</h3>
+                    <h3 className='text-xl text-yellow-800 font-bold'>{cashierInvoices.length} طلب</h3>
                     <div className="color w-full p-2 bg-yellow-500 rounded-full">
+                    </div>
+                </div>
+                <div onClick={() => setShowWebOrders(!showWebOrders)} className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-blue-100">
+                    <h2 className='text-2xl font-bold text-blue-600'>طلبات الموقع</h2>
+                    <h3 className='text-xl text-blue-800 font-bold'>{webInvoices.length} فاتورة</h3>
+                    <div className="color w-full p-2 bg-blue-500 rounded-full">
                     </div>
                 </div>
                 <div className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-gray-100">
@@ -580,243 +843,91 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
             <div className="orders w-full">
                 {showInvoices && (
                     <div className="invoices w-full flex items-start justify-center flex-col">
-                        <h2 className='text-xl mb-4 font-bold'>الفواتير:</h2>
-                        {invoices.map((invoice, ind) => (
-                            <div onClick={() => {
-                                setShowInvoice(!showInvoice)
-                                setItemsInOrder(invoice.items)
-                                setPayment(invoice.payment)
-                                setDelivery(invoice.delivery)
-                                setTaxs(invoice.taxs)
-                                setClient(invoice.client)
-                                setDiscount(invoice.discount)
-                                setInvoiceId(invoice.id)
-                                setIndexToDelete(ind)
-                            }} className={`invoice cursor-pointer hover:bg-slate-50 hover:border-mainColor border-2 w-full p-2 flex items-center justify-between rounded-xl my-1 ${invoicesFromLocalStorage?.some(localInvoice => localInvoice.id === invoice.id) ? "bg-gray-300" : "bg-red-200"}`} key={ind}>
-                                <h4 className='font-bold items-center text-xl'>{ind + 1} -</h4>
-                                <h4><span className='font-bold items-center'>الإجمالي: </span>{invoice.total} ج.م</h4>
-                                <h4><span className='font-bold hidden md:flex items-center'>الاصناف: </span>{invoice.items.length} أصناف</h4>
-                                <h4><span className='font-bold items-center'>طريقة الدفع: </span>{invoice.payment}</h4>
-                                <h4><span className='font-bold items-center'>العميل: </span>{invoice.client}</h4>
-                                <h4 onClick={() => setShowInvoice(!showInvoice)} className='text-green-500 p-1 bg-mainColor rounded-xl cursor-pointer font-bold text-xl'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" /> </svg></h4>
+                        <h2 className='text-xl mb-4 font-bold'>فواتير الكاشير:</h2>
+                        {cashierInvoices.length === 0 ? (
+                            <div className="text-center text-gray-500 p-4 bg-gray-50 rounded-xl">
+                                لا توجد فواتير من الكاشير حالياً
                             </div>
-                        ))}
+                        ) : (
+                            cashierInvoices.map((invoice, ind) => (
+                                <div onClick={() => {
+                                    setShowInvoice(!showInvoice)
+                                    setSelectedInvoice(invoice)
+                                    setItemsInOrder(invoice.items)
+                                    setPayment(invoice.payment)
+                                    setDelivery(invoice.delivery)
+                                    setTaxs(invoice.taxs)
+                                    setClient(invoice.client)
+                                    setDiscount(invoice.discount)
+                                    setInvoiceId(invoice.id)
+                                    setIndexToDelete(ind)
+                                }} className={`invoice cursor-pointer hover:bg-slate-50 hover:border-mainColor border-2 w-full p-2 flex items-center justify-between rounded-xl my-1 ${invoicesFromLocalStorage?.some(localInvoice => localInvoice.id === invoice.id) ? "bg-gray-300" : "bg-red-200"}`} key={ind}>
+                                    <h4 className='font-bold items-center text-xl'>{ind + 1} -</h4>
+                                    <h4><span className='font-bold items-center'>الإجمالي: </span>{invoice.total} ج.م</h4>
+                                    <h4><span className='font-bold hidden md:flex items-center'>الاصناف: </span>{invoice.items.length} أصناف</h4>
+                                    <h4><span className='font-bold items-center'>طريقة الدفع: </span>{invoice.payment}</h4>
+                                    <h4><span className='font-bold items-center'>العميل: </span>{invoice.client}</h4>
+                                    <h4 onClick={() => setShowInvoice(!showInvoice)} className='text-green-500 p-1 bg-mainColor rounded-xl cursor-pointer font-bold text-xl'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" /> </svg></h4>
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
-            </div>
-            {/* Update Shift */}
-            <div className="updateShift w-full flex items-start justify-center flex-col my-10">
-                <h2 className='text-xl mb-4 font-bold'>تحديث الوردية:</h2>
-                <div className="updateShiftBtn w-10/12 flex items-center justify-start flex-wrap">
-                    <div onClick={updateShift} className="btn text-sm p-2 bg-mainColor w-96 text-center text-bgColor font-bold rounded-lg cursor-pointer mx-2">تحديث الوردية</div>
-                </div>
-            </div>
 
-
-            <div className='w-full flex items-start justify-center flex-col lg:flex-row lg:justify-start my-5'>
-                <div className={`itemsList w-full lg:w-8/12 lg:ml-5 border-mainColor rounded-xl p-2 border my-2 lg:my-0`}>
-                    <div className="categoriesList flex flex-wrap justify-center items-center">
-                        <ul className='flex w-full flex-center justify-center lg:justify-start flex-wrap'>
-                            <li className={`cbtn ${category === "" ? "text-bgColor bg-black" : ' bg-bgColor text-blackColor'}`} onClick={() => setCategory('')}>الكل</li>
-                            {clist.map((c, ind) => (
-                                <li key={ind} className={`cbtn ${category === c ? "text-bgColor bg-black" : ' bg-bgColor text-blackColor'}`} onClick={() => setCategory(c)}>{c}</li>
-                            ))}
-                        </ul>
-                    </div>
-                    <div className="quantity flex items-center justify-end p-2">
-                        <div onClick={() => setQuantity(quantity + 1)} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
-                        <h3 className='text-2xl mx-2'>{quantity}</h3>
-                        <div onClick={() => {
-                            if (quantity >= 2) {
-                                setQuantity(quantity - 1)
-                            }
-                        }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-                        </div>
-                    </div>
-                    <div className="spicy w-full flex items-center justify-end p-2">
-                        <div className="without">
-                            <select name="without" id="with" value={without} onChange={(e) => setwithout(e.target.value)} className='w-60 p-1 ml-2 border-2 border-blackColor rounded-xl'>
-                                <option value="">بدون</option>
-                                <option value="بدون خضرة">بدون خضرة</option>
-                                <option value="بدون صوص">بدون صوص</option>
-                                <option value="بدون بصل">بدون بصل</option>
-                                <option value="بدون خيار مخلل">بدون خيار مخلل</option>
-                                <option value="سادة">سادة</option>
-                            </select>
-                        </div>
-                        <div onClick={() => setIsSpicy(!isSpicy)} className={`cursor-pointer w-[200px] p-1 rounded-xl flex items-center justify-center border-2 ${isSpicy ? "bg-black text-white" : "bg-white text-black"} border-blackColor hover:bg-blackColor hover:text-bgColor`}>Spicy</div>
-                    </div>
-                    <div className='without w-full flex items-center justify-end p-2'>
-                        <label htmlFor="without">تعليق: </label>
-                        <input type="text" value={without} onChange={(e) => setwithout(e.target.value)} placeholder='تعليق' className='w-80 p-1 mr-2 border-2 border-blackColor rounded-xl' id='without' />
-                    </div>
-                    <div className="itemsList my-10 flex items-center justify-center lg:justify-start flex-wrap w-full">
-                        {FilterdItems.map((item, ind) => (
-                            <div onClick={() => {
-                                AddItemToOrder(item.title, priceInTheBranch(item.prices), quantity, item.category, isSpicy, without)
-                                setQuantity(1)
-                                setIsSpicy(false)
-                                setwithout('')
-                            }} className="item flex flex-col items-center justify-center p-2 m-1 lg:m-3 border-2 border-black rounded-xl w-40 hover:shadow-xl duration-700 cursor-pointer" key={ind}>
-                                <Image src={item.category === 'برجر' ? "/burger.png" : item.category === 'فرايز' ? "/fries.png" : item.category === "وجبات" ? "/meal.png" : "/offer.png"} width={50} height={50} alt='Item Icon' />
-                                <h2 className='text-center text-xs my-1'>{item.title}</h2>
-                                <h2 className='font-bold'>{priceInTheBranch(item.prices)} ج.م</h2>
-
+                {/* قسم طلبات الموقع */}
+                {showWebOrders && (
+                    <div className="webOrders w-full flex items-start justify-center flex-col mt-8">
+                        <h2 className='text-xl mb-4 font-bold text-blue-600 mt-8'>فواتير طلبات الموقع:</h2>
+                        {webInvoices.length === 0 ? (
+                            <div className="text-center text-gray-500 p-4 bg-blue-50 rounded-xl">
+                                لا توجد فواتير من طلبات الموقع حالياً
                             </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* تفاصيل الدفع */}
-                <div className="CheckoutCash w-full lg:w-auto lg:min-w-96 border-mainColor rounded-xl p-3 border">
-                    <h2>تفاصيل الطلب:</h2>
-                    <div className="client flex items-center justify-between w-full my-3">
-                        <h3>العميل: </h3>
-                        <select className='w-60' name="client" id="client" value={client} onChange={(e) => setClient(e.target.value)}>
-                            <option value="Take Away">Take Away</option>
-                            <option value="Talabat">Talabat</option>
-                            <option value="El-menus">El-menus</option>
-                            <option value="delivery">delivery</option>
-                        </select>
-                    </div>
-
-                    {client === 'delivery' && (
-                        <>
-                            <div className="searchClient w-full flex items-center justify-between my-3">
-                                <input type="text" value={searchClient} onChange={(e) => setSearchClient(e.target.value)} placeholder='بحث عن العميل' className='w-60 p-1 border-2 border-blackColor rounded-xl' />
-                                <div onClick={() => {
-                                    if (clientSelected) {
-                                        setShowAddClient(!showAddClient)
-                                        setShowEditClient(!showAddClient)
-                                        setClientName(JSON.parse(clientSelected).name)
-                                        setClientPhone(JSON.parse(clientSelected).phone)
-                                        setClientAddress(JSON.parse(clientSelected).address)
-                                        setClientDelivery(JSON.parse(clientSelected).delivery)
-                                        setClientPoints(JSON.parse(clientSelected).points)
-                                        setClientOrders(JSON.parse(clientSelected).orders)
-                                        setClientId(JSON.parse(clientSelected)._id)
-                                    } else {
-                                        setShowAddClient(!showAddClient)
-                                    }
-                                }} className="btn p-1 bg-mainColor text-bgColor font-bold rounded-lg cursor-pointer">{clientSelected ? "تعديل" : "إضافة"} عميل</div>
-                            </div>
-                            <div className="clients w-full flex items-center justify-center">
-                                <select className='w-full' name="client" id="client" value={clientSelected} onChange={(e) => setClientSelected(e.target.value)}>
-                                    <option value={'null'}>اختر العميل</option>
-                                    {FilteredClients.map((client, ind) => (
-                                        <option key={ind} value={JSON.stringify(client)}>{client.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            {clientSelected && (
-                                <>
-                                    <div className="detailsAboutClient w-full flex flex-col items-center justify-center my-3">
-                                        <div className="orders w-full flex items-center justify-between">
-                                            <h3>مجموع الطلبات</h3>
-                                            <h3>{clientSelected && JSON.parse(clientSelected)?.orders?.length} طلب</h3>
+                        ) : (
+                            webInvoices.map((invoice, ind) => (
+                                <div key={invoice.id} className="webInvoice cursor-pointer hover:bg-blue-50 hover:border-blue-400 border-2 w-full p-3 flex items-center justify-between rounded-xl my-2 bg-blue-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-blue-500 text-white p-2 rounded-full">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 21c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
+                                            </svg>
                                         </div>
-                                        <div className="totalMoneySpended w-full flex items-center justify-between">
-                                            <h3>مجموع المبالغ المدفوعة</h3>
-                                            <h3>{JSON.parse(clientSelected)?.orders.length > 0 ? JSON.parse(clientSelected).orders.map(order => order.total).reduce((a, b) => a + b) : 0} ج.م</h3>
+                                        <div>
+                                            <h4 className='font-bold text-lg'>فاتورة #{webInvoices.length-(ind)}</h4>
+                                            <p className='text-sm text-gray-600'>العميل: {invoice.client}</p>
+                                            <p className='text-sm text-gray-600'>المجموع: {invoice.total} ج.م</p>
+                                            <p className='text-sm text-gray-600'>الاصناف: {invoice.items.length} أصناف</p>
+                                            <p className='text-sm text-gray-600'>طريقة الدفع: {invoice.payment}</p>
                                         </div>
                                     </div>
-                                </>
-                            )}
-                        </>
-                    )}
+                                    <div className="flex items-center gap-2">
 
-                    <div className="orderItemsList w-full min-h-72 bg-slate-100 p-1 rounded-xl my-3">
-                        {itemsInOrder.map((item, ind) => (
-                            <div className="item p-1 my-1 bg-bgColor rounded-xl flex items-center justify-between w-full" key={ind}>
-                                <div className="image flex ml-2 items-center justify-center p-2 rounded-xl bg-yellow-500">
-                                    <Image src={item.category === 'برجر' ? "/burger.png" : item.category === 'فرايز' ? "/fries.png" : item.category === "وجبات" ? "/meal.png" : "/offer.png"} width={50} height={50} alt='Item Icon' />
-                                </div>
-                                <div className="details h-full flex flex-col items-center justify-between p-2">
-                                    <h4 className='mb-0.5'>{item.title} {item.isSpicy ? "Spicy" : ''}</h4>
-                                    <p className='text-sm'>{item.without}</p>
-                                    <p className='text-xs text-gray-400'>{+item.price} * {item.quantity} = {item.price * item.quantity}</p>
-                                </div>
-                                <div className='DeleteItem flex items-center justify-end'>
-                                    <div onClick={() => removeItemFromOrder(ind)} className="deleteBtn p-2 rounded-xl cursor-pointer items-center bg-black text-red-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /> </svg>
+                                        <button
+                                            onClick={() => {
+                                                setShowInvoice(!showInvoice)
+                                                setSelectedInvoice(invoice)
+                                                setItemsInOrder(invoice.items)
+                                                setPayment(invoice.payment)
+                                                setDelivery(invoice.delivery)
+                                                setTaxs(invoice.taxs)
+                                                setClient(invoice.client)
+                                                setDiscount(invoice.discount)
+                                                setInvoiceId(invoice.id)
+                                                setIndexToDelete(ind)
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
+                                        >
+                                            عرض الفاتورة
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                    <h2>تفاصيل الدفع:</h2>
-                    <div className="payment border-t-2 my-2 px-1 py-2 text-sm">
-                        <div className="flex items-center mb-2 justify-between w-full">
-                            <h3 className='font-semibold'>المجموع الصافي</h3>
-                            <h3>{subTotalItems(itemsInOrder)} ج.م</h3>
-                        </div>
-                        <div className="flex items-center mb-4 justify-between w-full">
-                            <h3 className='font-semibold'>توصيل</h3>
-                            <div className="Delevery flex items-center justify-center">
-                                <div onClick={() => setDelivery(delivery + 5)} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
-                                <h3 className=' mx-2'>{delivery}</h3>
-                                <div onClick={() => {
-                                    if (delivery >= 5) {
-                                        setDelivery(delivery - 5)
-                                    }
-                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-                                </div>
-                            </div>
-                        </div>
-                        {clientSelected && client === 'delivery' && (
-                            <>
-                                <div className="flex items-center mb-2 justify-between w-full">
-                                    <h3>العنوان</h3>
-                                    <h3>{JSON.parse(clientSelected)?.address}</h3>
-                                </div>
-                                <div className="flex items-center mb-4 justify-between w-full">
-                                    <h3>رقم الهاتف</h3>
-                                    <h3>{JSON.parse(clientSelected)?.phone}</h3>
-                                </div>
-                            </>
-
+                            ))
                         )}
-                        <div className="flex items-center mb-2 justify-between w-full">
-                            <h3 dir='rtl' className='font-semibold'>ضريبة ق.م %14</h3>
-                            <div className="Delevery flex items-center justify-center">
-                                <div onClick={() => setTaxs(Math.trunc((subTotalItems(itemsInOrder) * 0.14)))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
-                                <h3 className=' mx-2'>{taxs}</h3>
-                                <div onClick={() => {
-                                    if (taxs >= 0) {
-                                        setTaxs(0)
-                                    }
-                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex items-center mb-8 justify-between w-full">
-                            <h3 className='font-semibold'>خصم 10%</h3>
-                            <div className="Delevery flex items-center justify-center">
-                                <div onClick={() => setDiscount(Math.trunc(subTotalItems(itemsInOrder) - (subTotalItems(itemsInOrder) * (90 / 100))))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
-                                <h3 className=' mx-2'>{discount}</h3>
-                                <div onClick={() => {
-                                    if (discount >= 5) {
-                                        setDiscount(0)
-                                    }
-                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex font-bold text-lg items-center justify-between w-full ">
-                            <h3>اجمالي الفاتورة</h3>
-                            <h3>{mainTotalItemsPrice()} ج.م</h3>
-                        </div>
-                        <div className="paymentMethod flex items-center justify-between w-full my-3">
-                            <h2 className='text-lg font-semibold'>الدفع: </h2>
-                            <div className="btns flex items-center justify-center">
-                                <button onClick={() => setPayment("Visa")} className={`${payment === 'Visa' ? "bg-black text-bgColor" : "text-black bg-bgColor"} cbtn border-2 border-black`}>Visa</button>
-                                <button onClick={() => setPayment("Cash")} className={`${payment === 'Cash' ? "bg-black text-bgColor" : "text-black bg-bgColor"} cbtn border-2 border-black`}>Cash</button>
-                            </div>
-                        </div>
                     </div>
-                    <button onClick={() => AddInvoice()} className='submitBtn w-full'>{alert ? alert : "إنشاء الفاتورة"}</button>
-                </div>
+                )}
+                {/* إغلاق div الخاص بقسم الطلبات */}
             </div>
+
+
             <div className={`InvoiceContainer absolute overflow-hidden top-0 left-0 bg-white flex flex-col items-center justify-start ${showInvoice ? "w-full h-full rounded-none opacity-100" : "opacity-0 w-0 h-0  rounded-xl"} duration-700`}>
                 {showInvoice && <button onClick={() => {
                     setShowInvoice(!showInvoice)
@@ -839,8 +950,36 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                     </div>
                     <div className="flex font-medium text-sm border-b-2 pt-4 items-center justify-between w-full">
                         <h3 className='font-semibold'>العميل</h3>
-                        <h4 className='text-2xl'>#{invoiceId}</h4>
-                        <h3>{client === 'delivery' ? JSON.parse(clientSelected)?.name || "اسم العميل" : client}</h3>
+                        {/* رقم الفاتورة */}
+                        {selectedInvoice && selectedInvoice.source === 'web' ? (
+                            <h4 className='text-2xl'>
+                                {(() => {
+                                    // إذا كانت الفاتورة من طلبات الموقع، احسب رقمها بنفس منطق WebOrderPage
+                                    if (selectedInvoice && selectedInvoice.source === 'web') {
+                                        // ابحث عن ترتيب الفاتورة في webInvoices
+                                        const webIndex = webInvoices.findIndex(inv => inv.id === selectedInvoice.id);
+                                        return `طلب رقم: ${webInvoices.length - webIndex}`;
+                                    }
+                                    return selectedInvoice.id;
+                                })()}
+                            </h4>
+                        ) : (
+                            <h4 className='text-2xl'>#{selectedInvoice ? selectedInvoice.id : invoiceId}</h4>
+                        )}
+                        {/* اسم العميل */}
+                        {selectedInvoice && selectedInvoice.source === 'web' ? (
+                            <h3>{selectedInvoice.client || client || 'اسم العميل'}</h3>
+                        ) : (
+                            <h3>{client === 'delivery' ? JSON.parse(clientSelected)?.name || "اسم العميل" : client}</h3>
+                        )}
+                    </div>
+                    {/* تمييز مصدر الفاتورة */}
+                    <div className="w-full flex items-center justify-center mt-1">
+                        {selectedInvoice && selectedInvoice.source === 'web' ? (
+                            <span className="text-xs font-bold text-blue-600">طلب موقع</span>
+                        ) : (
+                            <span className="text-xs font-bold text-green-700">{shift?.branch ? `فرع: ${shift.branch}` : ''}</span>
+                        )}
                     </div>
                     <div className="body w-full">
                         <div className="items w-full flex flex-col justify-start items-start my-2">
@@ -857,6 +996,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                                 </div>
                             ))}
                         </div>
+
+
                         <div className="total text-sm flex flex-col w-full">
                             <div className="flex items-center mb-2 justify-between w-full">
                                 <h3 className='font-semibold'>المجموع الصافي</h3>
@@ -868,6 +1009,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                                     <h3>{delivery} L.E</h3>
                                 </div>
                             )}
+
                             {clientSelected && client === 'delivery' && (
                                 <>
                                     <div className="flex flex-col items-start mb-2 justify-between w-full">
@@ -901,6 +1043,9 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                                 <h3>{payment}</h3>
                             </div>
                         </div>
+
+
+                        {/* section for print Invoice */}
                         <div className="foot">
                             <h6 className='text-xs text-gray-700'>الكاشير: {User.name}</h6>
                         </div>
@@ -913,13 +1058,18 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 </div>
                 <div className="btns w-80 mt-3">
                     <button onClick={() => sendOrderAndPrint()} className='submitBtn w-80'>طباعة الفاتورة</button>
+
                     {User.role === "المالك" && (
                         <>
                             {indexToDelete !== null && (
+                                <button onClick={() => DeleteInvoiceFromShift(indexToDelete)} className='text-textColor my-3 bg-red-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>حذف الفاتورة</button>
+                            )}
+                            {selectedInvoice && selectedInvoice.source === 'web' && (
                                 <>
-                                    <button onClick={() => DeleteInvoiceFromShift(indexToDelete)} className='text-textColor my-3 bg-red-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>حذف الفاتورة</button>
+                                  
+                                    <button onClick={() => sendOrderAndPrint()} className='text-textColor my-3 bg-green-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>طباعة الفاتورة</button>
+                                    <button onClick={() => updateShift()} className='text-textColor my-3 bg-blue-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>تحديث الفواتير</button>
                                 </>
-
                             )}
                             {showInvoices && (
                                 <button onClick={() => updateShift()} className='text-bgColor my-3 bg-mainColor font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>تحديث الفواتير</button>
@@ -1048,6 +1198,335 @@ export default function CasherPage({ shift, items, User, clientsFromDB }) {
                 </div>
             </div>
 
+            {/* Popup الطلبات */}
+            {showNotifications && (
+                <>
+                    {/* Overlay لإغلاق popup */}
+                    <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setShowNotifications(false)}
+                    ></div>
+                    <div className="absolute top-20 left-6 z-40 bg-white border border-gray-300 rounded-lg shadow-xl w-96 max-h-96 overflow-hidden notification-popup">
+                        <div className="bg-mainColor text-bgColor p-4 flex items-center justify-between">
+                            <h3 className="font-bold text-lg">الطلبات</h3>
+                            <div className="flex gap-2">
+                                {unreadCount > 0 && (
+                                    <button
+                                        onClick={markAllAsRead}
+                                        className="text-sm bg-bgColor text-mainColor px-2 py-1 rounded hover:bg-opacity-80"
+                                    >
+                                        تحديد الكل كمقروء
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShowNotifications(false)}
+                                    className="text-bgColor hover:text-gray-200"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div className="max-h-80 overflow-y-auto">
+                            {notifications.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">
+                                    لا توجد طلبات جديدة
+                                </div>
+                            ) : (
+                                notifications.map((notification) => (
+                                    <div
+                                        key={notification.id}
+                                        className={`p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors ${!notification.isRead ? 'bg-blue-50' : ''}`}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className={`w-2 h-2 rounded-full ${!notification.isRead ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                                                    <h4 className="font-semibold text-sm">{notification.message}</h4>
+                                                </div>
+                                                {notification.order && (
+                                                    <div className="text-xs text-gray-600 space-y-1">
+                                                        <p><strong>نوع الطلب:</strong> {notification.order.type === 'pickup' ? 'استلام من الفرع' : notification.order.type === 'delivery' ? 'توصيل' : (notification.order.type || 'غير محدد')}</p>
+                                                        <p><strong>المجموع:</strong> {(notification.order.totalPrice || notification.order.total || 0).toString()} ج.م</p>
+                                                        <p><strong>طريقة الدفع:</strong> {notification.order.paymentMethod || notification.order.payment || 'غير محدد'}</p>
+                                                        <p><strong>عدد المنتجات:</strong> {(notification.order.itemsCount || (notification.order.items ? notification.order.items.length : 0)).toString()} منتج</p>
+                                                        {notification.order.phone && (
+                                                            <p><strong>الهاتف:</strong> {notification.order.phone}</p>
+                                                        )}
+                                                        {notification.order.timestamp && (
+                                                            <p><strong>التاريخ:</strong> {notification.order.timestamp}</p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <p className="text-xs text-gray-400 mt-2">
+                                                    {notification.timestamp ? notification.timestamp : new Date(notification.createdAt).toLocaleString('ar-EG')}
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col gap-1 ml-2">
+                                                {!notification.isRead && (
+                                                    <button
+                                                        onClick={() => markAsRead(notification.id)}
+                                                        className="text-blue-500 hover:text-blue-700 text-xs"
+                                                    >
+                                                        تحديد كمقروء
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => createInvoiceFromNotification(notification.order, notification.id)}
+                                                    className="text-green-500 hover:text-green-700 text-xs bg-green-50 px-2 py-1 rounded"
+                                                >
+                                                    إنشاء فاتورة
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteNotification(notification.id)}
+                                                    className="text-red-500 hover:text-red-700 text-xs"
+                                                >
+                                                    حذف
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Update Shift */}
+            <div className="updateShift w-full flex items-start justify-center flex-col my-10">
+                <h2 className='text-xl mb-4 font-bold'>تحديث الوردية:</h2>
+                <div className="updateShiftBtn w-10/12 flex items-center justify-start flex-wrap">
+                    <div onClick={updateShift} className="btn text-sm p-2 bg-mainColor w-96 text-center text-bgColor font-bold rounded-lg cursor-pointer mx-2">تحديث الوردية</div>
+                </div>
+            </div>
+
+
+            <div className='w-full flex items-start justify-center flex-col lg:flex-row lg:justify-start my-5'>
+                <div className={`itemsList w-full lg:w-8/12 lg:ml-5 border-mainColor rounded-xl p-2 border my-2 lg:my-0`}>
+                    <div className="categoriesList flex flex-wrap justify-center items-center">
+                        <ul className='flex w-full flex-center justify-center lg:justify-start flex-wrap'>
+                            <li className={`cbtn ${category === "" ? "text-bgColor bg-black" : ' bg-bgColor text-blackColor'}`} onClick={() => setCategory('')}>الكل</li>
+                            {clist.map((c, ind) => (
+                                <li key={ind} className={`cbtn ${category === c ? "text-bgColor bg-black" : ' bg-bgColor text-blackColor'}`} onClick={() => setCategory(c)}>{c}</li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div className="quantity flex items-center justify-end p-2">
+                        <div onClick={() => setQuantity(quantity + 1)} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                        <h3 className='text-2xl mx-2'>{quantity}</h3>
+                        <div onClick={() => {
+                            if (quantity >= 2) {
+                                setQuantity(quantity - 1)
+                            }
+                        }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                        </div>
+                    </div>
+                    <div className="spicy w-full flex items-center justify-end p-2">
+                        <div className="without">
+                            <select name="without" id="with" value={without} onChange={(e) => setwithout(e.target.value)} className='w-60 p-1 ml-2 border-2 border-blackColor rounded-xl'>
+                                <option value="">بدون</option>
+                                <option value="بدون خضرة">بدون خضرة</option>
+                                <option value="بدون صوص">بدون صوص</option>
+                                <option value="بدون بصل">بدون بصل</option>
+                                <option value="بدون خيار مخلل">بدون خيار مخلل</option>
+                                <option value="سادة">سادة</option>
+                            </select>
+                        </div>
+                        <div onClick={() => setIsSpicy(!isSpicy)} className={`cursor-pointer w-[200px] p-1 rounded-xl flex items-center justify-center border-2 ${isSpicy ? "bg-black text-white" : "bg-white text-black"} border-blackColor hover:bg-blackColor hover:text-bgColor`}>Spicy</div>
+                    </div>
+                    <div className='without w-full flex items-center justify-end p-2'>
+                        <label htmlFor="without">تعليق: </label>
+                        <input type="text" value={without} onChange={(e) => setwithout(e.target.value)} placeholder='تعليق' className='w-80 p-1 mr-2 border-2 border-blackColor rounded-xl' id='without' />
+                    </div>
+                    <div className="itemsList my-10 flex items-center justify-center lg:justify-start flex-wrap w-full">
+                        {FilterdItems.map((item, ind) => (
+                            <div onClick={() => {
+                                AddItemToOrder(item.title, priceInTheBranch(item.prices), quantity, item.category, isSpicy, without)
+                                setQuantity(1)
+                                setIsSpicy(false)
+                                setwithout('')
+                            }} className="item flex flex-col items-center justify-center p-2 m-1 lg:m-3 border-2 border-black rounded-xl w-40 hover:shadow-xl duration-700 cursor-pointer" key={ind}>
+                                <Image src={item.category === 'برجر' ? "/burger.png" : item.category === 'فرايز' ? "/fries.png" : item.category === "وجبات" ? "/meal.png" : "/offer.png"} width={50} height={50} alt='Item Icon' />
+                                <h2 className='text-center text-xs my-1'>{item.title}</h2>
+                                <h2 className='font-bold'>{priceInTheBranch(item.prices)} ج.م</h2>
+
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* تفاصيل الدفع */}
+                <div className="CheckoutCash w-full lg:w-auto lg:min-w-96 border-mainColor rounded-xl p-3 border">
+                    <h2>تفاصيل الطلب:</h2>
+                    <div className="client flex items-center justify-between w-full my-3">
+                        <h3>العميل: </h3>
+                        <select className='w-60' name="client" id="client" value={client} onChange={(e) => setClient(e.target.value)}>
+                            <option value="Take Away">Take Away</option>
+                            <option value="Talabat">Talabat</option>
+                            <option value="El-menus">El-menus</option>
+                            <option value="delivery">delivery</option>
+                        </select>
+                    </div>
+
+                    {client === 'delivery' && (
+                        <>
+                            <div className="searchClient w-full flex items-center justify-between my-3">
+                                <input type="text" value={searchClient} onChange={(e) => setSearchClient(e.target.value)} placeholder='بحث عن العميل' className='w-60 p-1 border-2 border-blackColor rounded-xl' />
+                                <div onClick={() => {
+                                    if (clientSelected) {
+                                        setShowAddClient(!showAddClient)
+                                        setShowEditClient(!showAddClient)
+                                        setClientName(JSON.parse(clientSelected).name)
+                                        setClientPhone(JSON.parse(clientSelected).phone)
+                                        setClientAddress(JSON.parse(clientSelected).address)
+                                        setClientDelivery(JSON.parse(clientSelected).delivery)
+                                        setClientPoints(JSON.parse(clientSelected).points)
+                                        setClientOrders(JSON.parse(clientSelected).orders)
+                                        setClientId(JSON.parse(clientSelected)._id)
+                                    } else {
+                                        setShowAddClient(!showAddClient)
+                                    }
+                                }} className="btn p-1 bg-mainColor text-bgColor font-bold rounded-lg cursor-pointer">{clientSelected ? "تعديل" : "إضافة"} عميل</div>
+                            </div>
+                            <div className="clients w-full flex items-center justify-center">
+                                <select className='w-full' name="client" id="client" value={clientSelected} onChange={(e) => setClientSelected(e.target.value)}>
+                                    <option value={'null'}>اختر العميل</option>
+                                    {FilteredClients.map((client, ind) => (
+                                        <option key={ind} value={JSON.stringify(client)}>{client.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            {clientSelected && (
+                                <>
+                                    <div className="detailsAboutClient w-full flex flex-col items-center justify-center my-3">
+                                        <div className="orders w-full flex items-center justify-between">
+                                            <h3>مجموع الطلبات</h3>
+                                            <h3>{clientSelected && JSON.parse(clientSelected)?.orders?.length} طلب</h3>
+                                        </div>
+                                        <div className="totalMoneySpended w-full flex items-center justify-between">
+                                            <h3>مجموع المبالغ المدفوعة</h3>
+                                            <h3>{JSON.parse(clientSelected)?.orders.length > 0 ? JSON.parse(clientSelected).orders.map(order => order.total).reduce((a, b) => a + b) : 0} ج.م</h3>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    <div className="orderItemsList w-full min-h-72 bg-slate-100 p-1 rounded-xl my-3">
+                        {itemsInOrder.map((item, ind) => (
+                            <div className="item p-1 my-1 bg-bgColor rounded-xl flex items-center justify-between w-full" key={ind}>
+                                <div className="image flex ml-2 items-center justify-center p-2 rounded-xl bg-yellow-500">
+                                    <Image src={item.category === 'برجر' ? "/burger.png" : item.category === 'فرايز' ? "/fries.png" : item.category === "وجبات" ? "/meal.png" : "/offer.png"} width={50} height={50} alt='Item Icon' />
+                                </div>
+                                <div className="details h-full flex flex-col items-center justify-between p-2">
+                                    <h4 className='mb-0.5'>{item.title} {item.isSpicy ? "Spicy" : ""}</h4>
+                                    <p className='text-sm'>{item.without}</p>
+                                    <p className='text-xs text-gray-400'>{+item.price} * {item.quantity} = {item.price * item.quantity}</p>
+                                </div>
+                                <div className='DeleteItem flex items-center justify-end'>
+                                    <div onClick={() => removeItemFromOrder(ind)} className="deleteBtn p-2 rounded-xl cursor-pointer items-center bg-black text-red-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">   <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /> </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <h2>تفاصيل الدفع:</h2>
+                    <div className="payment border-t-2 my-2 px-1 py-2 text-sm">
+                        <div className="flex items-center mb-2 justify-between w-full">
+                            <h3 className='font-semibold'>المجموع الصافي</h3>
+                            <h3>{subTotalItems(itemsInOrder)} ج.م</h3>
+                        </div>
+                        <div className="flex items-center mb-4 justify-between w-full">
+                            <h3 className='font-semibold'>توصيل</h3>
+                            <div className="Delevery flex items-center justify-center">
+                                <div onClick={() => setDelivery(delivery + 5)} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                                <h3 className=' mx-2'>{delivery}</h3>
+                                <div onClick={() => {
+                                    if (delivery >= 5) {
+                                        setDelivery(delivery - 5)
+                                    }
+                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                        {clientSelected && client === 'delivery' && (
+                            <>
+                                <div className="flex items-center mb-2 justify-between w-full">
+                                    <h3>العنوان</h3>
+                                    <h3>{JSON.parse(clientSelected)?.address}</h3>
+                                </div>
+                                <div className="flex items-center mb-4 justify-between w-full">
+                                    <h3>رقم الهاتف</h3>
+                                    <h3>{JSON.parse(clientSelected)?.phone}</h3>
+                                </div>
+                            </>
+
+                        )}
+                        <div className="flex items-center mb-2 justify-between w-full">
+                            <h3 dir='rtl' className='font-semibold'>ضريبة ق.م %14</h3>
+                            <div className="Delevery flex items-center justify-center">
+                                <div onClick={() => setTaxs(Math.trunc((subTotalItems(itemsInOrder) * 0.14)))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                                <h3 className=' mx-2'>{taxs}</h3>
+                                <div onClick={() => {
+                                    if (taxs >= 0) {
+                                        setTaxs(0)
+                                    }
+                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center mb-8 justify-between w-full">
+                            <h3 className='font-semibold'>خصم 10%</h3>
+                            <div className="Delevery flex items-center justify-center">
+                                <div onClick={() => setDiscount(Math.trunc(subTotalItems(itemsInOrder) - (subTotalItems(itemsInOrder) * (90 / 100))))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                                <h3 className=' mx-2'>{discount}</h3>
+                                <div onClick={() => {
+                                    if (discount >= 5) {
+                                        setDiscount(0)
+                                    }
+                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex font-bold text-lg items-center justify-between w-full ">
+                            <h3>اجمالي الفاتورة</h3>
+                            <h3>{mainTotalItemsPrice()} ج.م</h3>
+                        </div>
+                        <div className="paymentMethod flex items-center justify-between w-full my-3">
+                            <h2 className='text-lg font-semibold'>الدفع: </h2>
+                            <div className="btns flex items-center justify-center">
+                                <button onClick={() => setPayment("Visa")} className={`${payment === 'Visa' ? "bg-black text-bgColor" : "text-black bg-bgColor"} cbtn border-2 border-black`}>Visa</button>
+                                <button onClick={() => setPayment("Cash")} className={`${payment === 'Cash' ? "bg-black text-bgColor" : "text-black bg-bgColor"} cbtn border-2 border-black`}>Cash</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={() => AddInvoice()} className='submitBtn w-full'>{alert ? alert : "إنشاء الفاتورة"}</button>
+                    {clientSelected && client !== 'Take Away' && (
+                        <div className="loyalty-points flex flex-col items-end my-2">
+                            <div className="text-sm font-bold mb-1">رصيد نقاط العميل: <span className="text-green-600">{loyaltyPoints}</span></div>
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={useLoyaltyPoints}
+                                    onChange={e => setUseLoyaltyPoints(e.target.checked)}
+                                    className="mr-2"
+                                    disabled={loyaltyPoints < 100}
+                                />
+                                <span className="text-xs">استخدم النقاط (كل 100 نقطة = خصم 10 جنيه)</span>
+                            </label>
+                            {useLoyaltyPoints && (
+                                <div className="text-xs text-purple-700 mt-1">خصم النقاط: {loyaltyDiscount} ج.م</div>
+                            )}
+                            {loyaltyLoading && <div className="text-xs text-blue-500">جاري تحديث النقاط...</div>}
+                            {loyaltyError && <div className="text-xs text-red-500">{loyaltyError}</div>}
+                        </div>
+                    )}
+                </div>
+            </div>
         </>
     )
 }

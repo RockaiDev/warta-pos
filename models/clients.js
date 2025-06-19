@@ -7,6 +7,7 @@ const clientSchema = new Schema({
     delivery: Number,
     orders: [],
     points : Number,
+    // loyaltyPoints: { type: Number, default: 0 },
 })
 
 const Client = mongoose.models.Client || mongoose.model('Client', clientSchema)
