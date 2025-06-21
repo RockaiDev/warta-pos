@@ -25,6 +25,7 @@ export default function DataProvider({ children }) {
                 fetch('/api/salaries').then(res => res.json()),
                 fetch('/api/shifts').then(res => res.json()),
                 fetch('/api/users').then(res => res.json())
+                
             ])
             setBranches(branches.branches)
             setCategories(categories.categories)

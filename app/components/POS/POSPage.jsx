@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import CasherPage from './CasherPage'
 import { useDataContext } from '../context/DataContext'
 
-export default function POSPage({ User }) {
+export default function POSPage({ User,client }) {
   const [isLoading, setIsLoading] = useState(true)
   const [casher, setcasher] = useState(User.name)
   const [branch, setbranch] = useState(User.branch)
