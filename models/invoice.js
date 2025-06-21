@@ -17,6 +17,10 @@ const invoiceSchema = new Schema({
     payment: String,
     branch: String,
     id: Number,
+    source: {
+        type: String,
+        default: 'cashier' // 'cashier' للكاشير، 'web' للموقع
+    }
 }, { timestamps: true })
 
 const Invoice = mongoose.models.Invoice || mongoose.model('Invoice', invoiceSchema)

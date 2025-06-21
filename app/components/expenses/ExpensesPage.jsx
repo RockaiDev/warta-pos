@@ -52,6 +52,7 @@ export default function ExpensesPage({ User }) {
     }, [])
 
 
+
     function formatDateTimeToArabic(dateStr) {
 
         const dateTime = new Date(`${dateStr}`);
@@ -72,6 +73,9 @@ export default function ExpensesPage({ User }) {
     }
 
 
+
+
+
     if (isLoading) {
         return <Loading />
     } else {
@@ -86,7 +90,7 @@ export default function ExpensesPage({ User }) {
             const dateB = new Date(b.createdAt);
             return dateB - dateA;
         });
-
+//بحذف مصروفات معية انا مش محتاجها 
         const Deleteexpenses = async (id) => {
             const confirmed = confirm('هل تريد حذف الصرف ؟')
             if (confirmed) {

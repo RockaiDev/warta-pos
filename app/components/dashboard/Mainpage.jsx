@@ -17,17 +17,22 @@ export default function Mainpage() {
     const [openMenu, setOpenMenu] = useState(false)
     const [user, setUser] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
-
+    const [client,setClient] = useState()
+    
     const allAccessRole = ["المالك", "المدير العام", "مدير فرع", "إدارة"]
+
+// console.log(client.);
 
     const router = useRouter()
 
-    useEffect(() => {
-        if (userData) {
-            setUser(JSON.parse(userData))
-            setIsLoading(false)
-        }
-    }, [])
+  useEffect(() => {
+   
+    if (userData) {
+        setUser(JSON.parse(userData));
+        setIsLoading(false);
+    }
+}, []);
+
 
     const LogOut = () => {
         sessionStorage.clear()
@@ -93,7 +98,7 @@ export default function Mainpage() {
                 {section === 'POS' && (
                     <section className='pos w-full h-full flex flex-col items-center justify-start py-3 px-5 overflow-auto'>
                         {/* Content */}
-                        <POSPage User={user} />
+                        <POSPage User={user} client={client} />
 
                     </section>
                 )}

@@ -12,6 +12,10 @@ const orderSchema = new Schema({
     },
     paymentMethod: String,
     status: String,
+    source:{
+        type: String,
+        default: "casher"
+    }
 }, {timestamps: true})
 
 const WebOrder = mongoose.models.Order || mongoose.model('Order', orderSchema)

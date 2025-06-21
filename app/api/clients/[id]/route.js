@@ -4,9 +4,9 @@ import { NextResponse } from "next/server"
 
 export async function PUT(req, { params }) {
     const { id } = params
-    const { name, phone, address, delivery, orders, points, loyaltyPoints } = await req.json()
+    const { name, phone, address, delivery, orders, points } = await req.json()
     await connectMongoDB()
-    await Client.findByIdAndUpdate(id, { name, phone, address, delivery, orders, points, loyaltyPoints })
+    await Client.findByIdAndUpdate(id, { name, phone, address, delivery, orders, points })
     return NextResponse.json({ message: 'Client Updated' }, { status: 200 })
 }
 
