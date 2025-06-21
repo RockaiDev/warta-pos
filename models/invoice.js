@@ -16,7 +16,7 @@ const invoiceSchema = new Schema({
     user: String,
     payment: String,
     branch: String,
-    id: Number,
+    id: String,
     source: {
         type: String,
         default: 'cashier' // 'cashier' للكاشير، 'web' للموقع

@@ -14,7 +14,7 @@ const orderSchema = new Schema({
     status: String,
     source:{
         type: String,
-        default: "casher"
+        default: "cashier"
     }
 }, {timestamps: true})
 
