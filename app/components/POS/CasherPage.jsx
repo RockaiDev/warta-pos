@@ -15,76 +15,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
     const [expenses, setExpenses] = useState(shift.expenses)
     const [showAddExpense, setShowAddExpense] = useState(false)
     const [alert, setAlert] = useState('')
-    
-    // نظام الطلبات
-    const [notifications, setNotifications] = useState([])
-    const [showNotifications, setShowNotifications] = useState(false)
-    const [unreadCount, setUnreadCount] = useState(0)
-
-    // Socket.IO listeners
-    useEffect(() => {
-        // للتحقق من الاتصال
-        socket.on("connect", () => {
-            console.log("✅ السيرفر شغال زي الفل - Socket ID:", socket.id);
-        });
-
-        // للتحقق من الأخطاء
-        socket.on("connect_error", (error) => {
-            console.error("❌ خطأ في الاتصال:", error.message);
-        });
-
-        // عشان اتاكد ان الي طالب طلب الاوردر
-        socket.on('newOrderNotification', (data) => {
-            console.log('✅ تأكيد الطلب:', data);
-            setAlert(data.message);
-        });
-
-        // استقبال إشعارات الطلبات الجديدة
-        socket.on('newOrderNotification', (data) => {
-            console.log(data.order);
-            console.log({
-                type: data.order.type,
-                phone: data.order.phone,
-                totalPrice: data.order.totalPrice,
-                itemsCount: data.order.itemsCount,
-                paymentMethod: data.order.paymentMethod,
-                timestamp: data.order.timestamp
-            });
-            
-            // إضافة الإشعار للقائمة
-            const newNotification = {
-                id: Date.now(),
-                message: `طلب جديد! رقم الهاتف: ${data.order.phone || 'غير محدد'}`,
-                order: data.order,
-                isRead: false,
-                createdAt: new Date(),
-                timestamp: data.order.timestamp || new Date().toISOString()
-            };
-            
-            setNotifications(prev => {
-                const updatedNotifications = [newNotification, ...prev];
-                // حفظ في localStorage
-                localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-                return updatedNotifications;
-            });
-            setUnreadCount(prev => prev + 1);
-        });
-
-        // استرجاع الطلبات من localStorage
-        const savedNotifications = localStorage.getItem('notifications');
-        if (savedNotifications) {
-            const parsedNotifications = JSON.parse(savedNotifications);
-            setNotifications(parsedNotifications);
-            setUnreadCount(parsedNotifications.filter(n => !n.isRead).length);
-        }
-
-        return () => {
-            socket.off('connect');
-            socket.off('connect_error');
-            socket.off('orderConfirmation');
-            socket.off('newOrderNotification');
-        };
-    }, []);
 
     // أضف متغيرات الطلبات
     const [notifications, setNotifications] = useState([])
@@ -100,11 +30,14 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
     const [cashierInvoices, setCashierInvoices] = useState([])
     const [webInvoices, setWebInvoices] = useState([])
 
+    // متغير فلترة الفواتير في قسم "عرض الكل"
+    const [invoiceFilter, setInvoiceFilter] = useState('all') // 'all', 'cashier', 'web'
+
+    // عداد طلبات الموقع
+    const [webOrderCounter, setWebOrderCounter] = useState(1)
+
     // 1. إضافة متغير حالة لتخزين الفاتورة المختارة
     const [selectedInvoice, setSelectedInvoice] = useState(null);
-
-    // عداد لطلبات الموقع
-    const [webOrderCounter, setWebOrderCounter] = useState(1);
 
     const FilterdItems = items.filter(item => {
         const matchedCategory = !category || item.category === category
@@ -235,79 +168,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
         }
     }
 
-    // دوال إدارة الطلبات
-    const markAsRead = (notificationId) => {
-        setNotifications(prev => {
-            const updated = prev.map(notif => 
-                notif.id === notificationId 
-                    ? { ...notif, isRead: true }
-                    : notif
-            );
-            localStorage.setItem('notifications', JSON.stringify(updated));
-            return updated;
-        });
-        setUnreadCount(prev => Math.max(0, prev - 1));
-    }
-
-    const markAllAsRead = () => {
-        setNotifications(prev => {
-            const updated = prev.map(notif => ({ ...notif, isRead: true }));
-            localStorage.setItem('notifications', JSON.stringify(updated));
-            return updated;
-        });
-        setUnreadCount(0);
-    }
-
-    const deleteNotification = (notificationId) => {
-        setNotifications(prev => {
-            const updated = prev.filter(notif => notif.id !== notificationId);
-            localStorage.setItem('notifications', JSON.stringify(updated));
-            return updated;
-        });
-        setUnreadCount(prev => Math.max(0, prev - 1));
-    }
-
-    // دالة إنشاء فاتورة من الطلب
-    const createInvoiceFromNotification = (orderData) => {
-        if (!orderData) return;
-        
-        // إنشاء فاتورة جديدة من بيانات الطلب
-        const newInvoice = {
-            client: orderData.phone || 'Take Away',
-            items: [], // لا توجد تفاصيل المنتجات في البيانات
-            total: orderData.totalPrice || 0,
-            discount: 0,
-            taxs: 0,
-            delivery: 0,
-            user: User.name,
-            payment: orderData.paymentMethod || 'Cash',
-            branch: shift.branch,
-            id: invoices.length + 1
-        };
-        
-        // إضافة الفاتورة للقائمة
-        const updatedInvoices = [...invoices, newInvoice];
-        setInvoices(updatedInvoices);
-        localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
-        
-        setAlert('تم إنشاء الفاتورة من الطلب بنجاح');
-        setShowNotifications(false);
-    }
-
-    // إغلاق popup عند النقر خارجه
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (showNotifications && !event.target.closest('.notification-popup')) {
-                setShowNotifications(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [showNotifications]);
-
     // Handle Expenses **********************
 
 
@@ -394,15 +254,23 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
         source: 'cashier' // إضافة source للفواتير العادية
     }
 
-    // Handle Invoice ************************
-    const AddInvoice = async () => {
+    // دالة إنشاء فاتورة الكاشير
+    const createCashierInvoice = async () => {
         if (itemsInOrder.length > 0) {
-            setAlert('جاري إنشاء الفاتورة...')
+            setAlert('جاري إنشاء فاتورة الكاشير...')
             
             try {
-                // إنشاء الفاتورة مع source: 'cashier'
                 const newInvoice = {
-                    ...invoice,
+                    client: client,
+                    items: [...itemsInOrder],
+                    total: mainTotalItemsPrice(),
+                    discount: discount,
+                    taxs: taxs,
+                    delivery: delivery,
+                    user: User.name,
+                    payment: payment,
+                    branch: shift.branch,
+                    id: invoices.length + 1,
                     source: 'cashier'
                 };
                 
@@ -418,7 +286,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                     address: client === 'delivery' ? (JSON.parse(clientSelected)?.address || '') : 'In The Branch',
                     paymentMethod: payment,
                     status: 'completed',
-                    source: selectedInvoice && selectedInvoice.source === 'web' ? 'web' : 'cashier'
+                    source: 'cashier'
                 };
                 
                 // حفظ الفاتورة في قاعدة البيانات
@@ -442,10 +310,12 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 if (resInvoice.ok && resOrder.ok) {
                     // إضافة الفاتورة للقائمة المحلية
                     let invoicesHandle = [...invoices, newInvoice];
-                    setInvoiceId(newInvoice.id);
                     setInvoices(invoicesHandle);
-                    setAlert('تم إنشاء الفاتورة والطلب بنجاح');
-                    setShowInvoice(true);
+                    
+                    // إضافة فاتورة الكاشير لقائمة فواتير الكاشير
+                    setCashierInvoices(prev => [...prev, newInvoice]);
+                    
+                    setAlert('تم إنشاء فاتورة الكاشير بنجاح');
                     
                     // حفظ في localStorage
                     localStorage.setItem('invoices', JSON.stringify(invoicesHandle));
@@ -455,22 +325,317 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                         AddOrderToClient();
                     }
                 } else {
-                    setAlert('حدث خطأ في إنشاء الفاتورة أو الطلب');
+                    setAlert('حدث خطأ في إنشاء فاتورة الكاشير');
                 }
             } catch (error) {
                 console.log(error);
-                setAlert('حدث خطأ في إنشاء الفاتورة');
+                setAlert('حدث خطأ في إنشاء فاتورة الكاشير');
             }
         } else {
             setAlert('لا يوجد شيء في الفاتورة');
         }
     }
 
+    // دالة إنشاء فاتورة الكاشير مع الطباعة
+    const createCashierInvoiceAndPrint = async () => {
+        if (client === 'delivery' && (!clientSelected || clientSelected === 'null')) {
+            setAlert('برجاء اختيار عميل للتوصيل');
+            return;
+        }
+        
+        if (itemsInOrder.length > 0) {
+            setAlert('جاري إنشاء فاتورة الكاشير...')
+            
+            try {
+                const newInvoice = {
+                    client: client,
+                    items: [...itemsInOrder],
+                    total: mainTotalItemsPrice(),
+                    discount: discount,
+                    taxs: taxs,
+                    delivery: delivery,
+                    user: User.name,
+                    payment: payment,
+                    branch: shift.branch,
+                    id: invoices.length + 1,
+                    source: 'cashier'
+                };
+                
+                // إنشاء الطلب لحفظه في قاعدة البيانات
+                const totalPrice = mainTotalItemsPrice() || 0;
+                const newOrder = {
+                    name: client === 'delivery' ? (JSON.parse(clientSelected)?.name || 'عميل توصيل') : client,
+                    email: '',
+                    image: '',
+                    items: itemsInOrder,
+                    totalPrice: totalPrice,
+                    phoneNum: client === 'delivery' ? (JSON.parse(clientSelected)?.phone || '') : '',
+                    address: client === 'delivery' ? (JSON.parse(clientSelected)?.address || '') : 'In The Branch',
+                    paymentMethod: payment,
+                    status: 'completed',
+                    source: 'cashier'
+                };
+                
+                // حفظ الفاتورة في قاعدة البيانات
+                const resInvoice = await fetch('/api/invoices', {
+                    method: "POST",
+                    headers: {
+                        "Content-type": "application/json"
+                    },
+                    body: JSON.stringify(newInvoice)
+                });
+                
+                // حفظ الطلب في قاعدة البيانات
+                const resOrder = await fetch('/api/orders', {
+                    method: "POST",
+                    headers: {
+                        "Content-type": "application/json"
+                    },
+                    body: JSON.stringify(newOrder)
+                });
+                
+                const updatedInvoices = [...invoices, newInvoice];
+                setInvoices(updatedInvoices);
+                
+                // إضافة فاتورة الكاشير لقائمة فواتير الكاشير
+                setCashierInvoices(prev => [...prev, newInvoice]);
+                
+                localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
+                
+                const resShift = await fetch(`/api/shifts/${shift._id}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-type": 'application/json'
+                    },
+                    body: JSON.stringify({ invoices: updatedInvoices })
+                });
+                
+                if (resInvoice.ok && resShift.ok && resOrder.ok) {
+                    // معالجة نظام النقاط إذا كان هناك عميل محدد
+                    if (client === 'delivery' && clientSelected && clientSelected !== 'null') {
+                        try {
+                            const clientObj = JSON.parse(clientSelected);
+                            
+                            // خصم النقاط المستخدمة في الخصم
+                            if (discount > 0) {
+                                const pointsUsed = Math.floor(discount * 10); // كل جنيه خصم = 10 نقاط
+                                await calculateAndUpdateRemainingPoints(pointsUsed);
+                            }
+                            
+                            // إضافة نقاط جديدة للطلب
+                            await addPointsToClient(totalPrice);
+                            
+                            // تحديث طلبات العميل
+                            const resClient = await fetch(`/api/clients/${clientObj._id}`, {
+                                method: "PUT",
+                                headers: {
+                                    "Content-type": 'application/json'
+                                },
+                                body: JSON.stringify({ orders: clientOrders })
+                            });
+                            
+                            if (resClient.ok) {
+                                setAlert('تم إضافة الطلب للعميل وتحديث النقاط')
+                                setClientSelected(null)
+                                setClientOrders([])
+                                setShowAddClient(false)
+                                setShowEditClient(false)
+                                setClientName('')
+                                setClientPhone('')
+                                setClientAddress('')
+                                setClientDelivery(0)
+                                setClientPoints(0)
+                            }
+                        } catch (pointsError) {
+                            console.error('خطأ في معالجة النقاط:', pointsError);
+                            setAlert('تم إنشاء الفاتورة ولكن حدث خطأ في معالجة النقاط');
+                        }
+                    }
+                    
+                    setAlert('تم إنشاء فاتورة الكاشير بنجاح')
+                    setItemsInOrder([])
+                    setDiscount(0)
+                    setDelivery(0)
+                    setTaxs(0)
+                    window.print()
+                }
+            } catch (error) {
+                console.log(error);
+                setAlert('حدث خطأ في إنشاء فاتورة الكاشير');
+            }
+        } else {
+            setAlert('لا يوجد شيء في الفاتورة');
+        }
+    }
+
+ // دالة إنشاء فاتورة الموقع
+const createWebsiteInvoice = async (orderData) => {
+    console.log(orderData);
+
+    // التحقق من أن البيانات موجودة
+    if (!orderData) {
+        setAlert('بيانات الطلب غير صحيحة - لا توجد بيانات');
+        return;
+    }
+
+    // التحقق من وجود العناصر بعدة طرق
+    const hasItems = orderData && Array.isArray(orderData.items) && orderData.items.length > 0;
+    const hasItemsData = orderData && Array.isArray(orderData.itemsData) && orderData.itemsData.length > 0;
+    const hasOrderItems = orderData.order && Array.isArray(orderData.order.items) && orderData.order.items.length > 0;
+    const hasOrderArray = orderData.order && Array.isArray(orderData.order) && orderData.order.length > 0;
+    const hasItemsCount = orderData.itemsCount && orderData.itemsCount > 0;
+
+    // لو مفيش أي نوع من العناصر
+    if (
+        !hasItems &&
+        !hasItemsData &&
+        !hasOrderItems &&
+        !hasOrderArray &&
+        !hasItemsCount
+    ) {
+        console.log('بيانات الطلب:', orderData);
+        setAlert('بيانات الطلب غير صحيحة - لا توجد عناصر في الطلب');
+        return;
+    }
+
+    setAlert('جاري إنشاء فاتورة الموقع...');
+
+    try {
+        // تحديد مصدر العناصر
+        let itemsToProcess = [];
+        if (hasItems) {
+            itemsToProcess = orderData.items;
+        } else if (hasItemsData) {
+            itemsToProcess = orderData.itemsData;
+        } else if (hasOrderItems) {
+            itemsToProcess = orderData.order.items;
+        } else if (hasOrderArray) {
+            itemsToProcess = orderData.order;
+        } else if (hasItemsCount) {
+            // إنشاء عنصر افتراضي للبيانات التي تحتوي على itemsCount فقط
+            itemsToProcess = [{
+                title: 'طلب من الموقع',
+                price: orderData.totalPrice || 0,
+                quantity: orderData.itemsCount || 1,
+                category: 'عام',
+                isSpicy: false,
+                without: ''
+            }];
+        }
+
+        // تجهيز العناصر للفاتورة
+        const invoiceItems = itemsToProcess.map(item => ({
+            title: item.itemInfo?.titleAr || item.name || item.title || item.itemName || 'منتج غير محدد',
+            price: parseFloat(item.totalPrice || item.price || item.itemPrice || 0),
+            quantity: parseInt(item.quantity || item.qty || 1),
+            category: item.itemInfo?.category || item.category || item.itemCategory || 'عام',
+            isSpicy: item.isSpicy || false,
+            without: item.without || item.notes || ''
+        }));
+
+        const totalPrice = invoiceItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+        // إنشاء الفاتورة
+        const newInvoice = {
+            client: orderData.address && orderData.address !== 'In The Branch' ? 'delivery' : 'Take Away',
+            items: invoiceItems,
+            total: totalPrice,
+            discount: 0,
+            taxs: 0,
+            delivery: 0,
+            user: User.name,
+            payment: orderData.paymentMethod || orderData.payment || 'Cash',
+            branch: shift.branch,
+            id: `WEB-${webOrderCounter}`,
+            source: 'web'
+        };
+
+        // إنشاء الطلب
+        const newOrder = {
+            name: orderData.name || orderData.customerName || 'عميل موقع',
+            email: orderData.email || '',
+            image: '',
+            items: itemsToProcess,
+            totalPrice: totalPrice,
+            phoneNum: orderData.phoneNum || orderData.phone || '',
+            address: orderData.address || 'In The Branch',
+            paymentMethod: orderData.paymentMethod || orderData.payment || 'Cash',
+            status: 'completed',
+            source: 'web'
+        };
+
+        // إرسال الفاتورة
+        const resInvoice = await fetch('/api/invoices', {
+            method: "POST",
+            headers: { "Content-type": "application/json" },
+            body: JSON.stringify(newInvoice)
+        });
+
+        // إرسال الطلب
+        const resOrder = await fetch('/api/orders', {
+            method: "POST",
+            headers: { "Content-type": "application/json" },
+            body: JSON.stringify(newOrder)
+        });
+
+        if (resInvoice.ok && resOrder.ok) {
+            // حفظ محلي
+            let invoicesHandle = [...invoices, newInvoice];
+            setInvoices(invoicesHandle);
+            setWebInvoices(prev => [...prev, newInvoice]);
+            localStorage.setItem('invoices', JSON.stringify(invoicesHandle));
+            setWebOrders(prev => prev.filter(order => order.order !== orderData));
+            setWebOrderCounter(prev => prev + 1);
+
+            // معالجة النقاط
+            if (clientSelected && clientSelected !== 'null') {
+                try {
+                    const clientObj = JSON.parse(clientSelected);
+
+                    if (newInvoice.discount > 0) {
+                        const pointsUsed = Math.floor(newInvoice.discount * 10);
+                        await calculateAndUpdateRemainingPoints(pointsUsed);
+                    }
+
+                    await addPointsToClient(totalPrice);
+                    console.log('تم معالجة النقاط لفاتورة الموقع');
+                } catch (pointsError) {
+                    console.error('خطأ في معالجة النقاط لفاتورة الموقع:', pointsError);
+                }
+            }
+
+            setAlert('تم إنشاء فاتورة الموقع بنجاح');
+            setSelectedInvoice(newInvoice);
+            setItemsInOrder(invoiceItems);
+            setPayment(newInvoice.payment);
+            setDelivery(newInvoice.delivery);
+            setTaxs(newInvoice.taxs);
+            setClient(newInvoice.client);
+            setDiscount(newInvoice.discount);
+            setInvoiceId(newInvoice.id);
+            setShowInvoice(true);
+            
+            // طباعة الفاتورة
+            window.print();
+        } else {
+            setAlert('حدث خطأ في إنشاء فاتورة الموقع');
+        }
+    } catch (error) {
+        console.log('خطأ في إنشاء فاتورة الموقع:', error);
+        setAlert('حدث خطأ في إنشاء فاتورة الموقع');
+    }
+};
+
+
     const sendOrderAndPrint = async () => {
         if (client === 'delivery' && (!clientSelected || clientSelected === 'null')) {
             setAlert('برجاء اختيار عميل للتوصيل');
             return;
         }
+        
+        // تحديد نوع المصدر بناءً على الفاتورة المحددة
+        const invoiceSource = selectedInvoice && selectedInvoice.source === 'web' ? 'web' : 'cashier';
+        
         let newInvoice = {
             client: client,
             items: [...itemsInOrder],
@@ -482,12 +647,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             payment: payment,
             branch: shift.branch,
             id: invoices.length + 1,
-            source: 'cashier' // إضافة source للفواتير العادية
+            source: invoiceSource
         };
-        // إذا كانت فاتورة ويب أضف خاصية source: 'web'
-        if (selectedInvoice && selectedInvoice.source === 'web') {
-            newInvoice = { ...newInvoice, source: 'web' };
-        }
         
         // إنشاء الطلب لحفظه في قاعدة البيانات
         const totalPrice = mainTotalItemsPrice() || 0;
@@ -501,7 +662,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             address: client === 'delivery' ? (JSON.parse(clientSelected)?.address || '') : 'In The Branch',
             paymentMethod: payment,
             status: 'completed',
-            source: selectedInvoice && selectedInvoice.source === 'web' ? 'web' : 'cashier'
+            source: invoiceSource
         };
         
         try {
@@ -524,6 +685,14 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             
             const updatedInvoices = [...invoices, newInvoice];
             setInvoices(updatedInvoices);
+            
+            // إضافة الفاتورة للقائمة الصحيحة حسب المصدر
+            if (invoiceSource === 'web') {
+                setWebInvoices(prev => [...prev, newInvoice]);
+            } else {
+                setCashierInvoices(prev => [...prev, newInvoice]);
+            }
+            
             localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
             const resShift = await fetch(`/api/shifts/${shift._id}`, {
                 method: "PUT",
@@ -532,50 +701,32 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 },
                 body: JSON.stringify({ invoices: updatedInvoices })
             })
-<<<<<<< HEAD
-
-            if (resInvoice.ok && resShift.ok) {
-                // إرسال الطلب عبر Socket.IO
-                const orderData = {
-                    id: invoice.id,
-                    client: client,
-                    items: itemsInOrder,
-                    total: mainTotalItemsPrice(),
-                    discount: discount,
-                    taxs: taxs,
-                    delivery: delivery,
-                    payment: payment,
-                    branch: shift.branch,
-                    user: User.name,
-                    phone: client === 'delivery' && clientSelected ? JSON.parse(clientSelected).phone : 'Take Away',
-                    address: client === 'delivery' && clientSelected ? JSON.parse(clientSelected).address : '',
-                    timestamp: new Date().toISOString()
-                };
-
-                //إرسال الطلب الجديد للسيرفر
-                socket.emit('newOrder', orderData);
-                console.log('📤 تم إرسال الطلب:', orderData);
-
-                setAlert('تم إنشاء الطلب بنجاح');
-=======
             if (resInvoice.ok && resShift.ok && resOrder.ok) {
-                setAlert('تم إنشاء الطلب والفاتورة بنجاح')
->>>>>>> farestest
-                setItemsInOrder([])
-                setDiscount(0)
-                setDelivery(0)
-                setTaxs(0)
-                window.print()
-                if (client === 'delivery') {
-                    const resClient = await fetch(`/api/clients/${JSON.parse(clientSelected)._id}`, {
+                // معالجة نظام النقاط إذا كان هناك عميل محدد
+                if (client === 'delivery' && clientSelected && clientSelected !== 'null') {
+                    try {
+                        const clientObj = JSON.parse(clientSelected);
+                        
+                        // خصم النقاط المستخدمة في الخصم
+                        if (discount > 0) {
+                            const pointsUsed = Math.floor(discount * 10); // كل جنيه خصم = 10 نقاط
+                            await calculateAndUpdateRemainingPoints(pointsUsed);
+                        }
+                        
+                        // إضافة نقاط جديدة للطلب
+                        await addPointsToClient(totalPrice);
+                        
+                        // تحديث طلبات العميل
+                        const resClient = await fetch(`/api/clients/${clientObj._id}`, {
                         method: "PUT",
                         headers: {
                             "Content-type": 'application/json'
                         },
                         body: JSON.stringify({ orders: clientOrders })
-                    })
+                        });
+                        
                     if (resClient.ok) {
-                        setAlert('تم إضافة الطلب للعميل')
+                            setAlert('تم إضافة الطلب للعميل وتحديث النقاط')
                         setClientSelected(null)
                         setClientOrders([])
                         setShowAddClient(false)
@@ -586,7 +737,18 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                         setClientDelivery(0)
                         setClientPoints(0)
                     }
+                    } catch (pointsError) {
+                        console.error('خطأ في معالجة النقاط:', pointsError);
+                        setAlert('تم إنشاء الفاتورة ولكن حدث خطأ في معالجة النقاط');
+                    }
                 }
+                
+                setAlert('تم إنشاء الطلب والفاتورة بنجاح')
+                setItemsInOrder([])
+                setDiscount(0)
+                setDelivery(0)
+                setTaxs(0)
+                window.print()
             }
         } catch (error) {
             console.log(error);
@@ -607,6 +769,12 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             })
 
             if (resShift.ok) {
+                // تحديث القوائم بعد حفظ البيانات
+                const cashierInvs = invoices.filter(invoice => invoice.source !== 'web');
+                const webInvs = invoices.filter(invoice => invoice.source === 'web');
+                setCashierInvoices(cashierInvs);
+                setWebInvoices(webInvs);
+                
                 setAlert('تم تحديث الشيفت بنجاح')
                 setItemsInOrder([])
                 setDiscount(0)
@@ -622,12 +790,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
     }
 
 
-<<<<<<< HEAD
-    // Handle Invoice ************************
-
-
-=======
->>>>>>> farestest
     // Close Shift ****************************
     const [showReport, setShowReport] = useState(false)
 
@@ -667,6 +829,10 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
 
 
 
+
+
+
+
     // Delete Shift *************************
     const DeleteShift = async (id) => {
         const confirmed = confirm('هل تريد إلغاء الوردية؟\nلن تتمكن من استعادة البيانات مجدداً')
@@ -693,13 +859,15 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
     const [indexToDelete, setIndexToDelete] = useState(null)
     const DeleteInvoiceFromShift = (id) => {
         if (selectedInvoice && selectedInvoice.source === 'web') {
-            // حذف من فواتير الويب فقط
-            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id || inv.source !== 'web');
+            // حذف من فواتير الويب
+            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id);
             setInvoices(updatedInvoices);
+            setWebInvoices(prev => prev.filter(inv => inv.id !== selectedInvoice.id));
         } else {
-            // حذف من فواتير الكاشير فقط
-            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id || inv.source === 'web');
+            // حذف من فواتير الكاشير
+            const updatedInvoices = invoices.filter(inv => inv.id !== selectedInvoice.id);
             setInvoices(updatedInvoices);
+            setCashierInvoices(prev => prev.filter(inv => inv.id !== selectedInvoice.id));
         }
         setIndexToDelete(null);
         setShowInvoice(false);
@@ -821,11 +989,11 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             console.log('Received order data:', data);
 
             // التأكد من أن البيانات تحتوي على order
-            const orderData = data.order || data;
-            
+            const orderData = data.order
+
             const newNotification = {
                 id: Date.now(),
-                message: `طلب جديد! رقم الهاتف: ${orderData.phoneNum || orderData.phone || 'غير محدد'}`,
+                message: `طلب جديد! رقم الهاتف: ${orderData.phone || 'غير محدد'}`,
                 order: orderData,
                 isRead: false,
                 createdAt: new Date(),
@@ -836,7 +1004,13 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
                 return updatedNotifications;
             });
+
+
+
             setUnreadCount(prev => prev + 1);
+
+
+
 
             // إضافة الطلب إلى قائمة طلبات الموقع
             addWebOrder(orderData);
@@ -855,11 +1029,24 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
 
     // فصل الفواتير حسب المصدر (العرض)
     useEffect(() => {
-        const cashierInvs = invoices.filter(invoice => invoice.source !== 'web');
-        const webInvs = invoices.filter(invoice => invoice.source === 'web');
+        console.log('فصل الفواتير حسب المصدر:', invoices);
+        
+        const cashierInvs = invoices.filter(invoice => {
+            return invoice.source !== 'web';
+        });
+        
+        const webInvs = invoices.filter(invoice => { 
+            return invoice.source === 'web';
+        });
+        
+        console.log('فواتير الكاشير:', cashierInvs.length);
+        console.log('فواتير الموقع:', webInvs.length);
+        
         setCashierInvoices(cashierInvs);
         setWebInvoices(webInvs);
     }, [invoices]);
+
+
 
     // دوال الطلبات والتنبيهات
     const addWebOrder = (order) => {
@@ -904,168 +1091,33 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
         });
     };
 
-    const createInvoiceFromNotification = (orderData, notificationId) => {
+
+
+
+    
+    const createInvoiceFromNotification = async (orderData, notificationId) => {
+        console.log('بيانات الطلب من الإشعار:', orderData);
+        
         if (!orderData) {
             setAlert('بيانات الطلب غير صحيحة');
             return;
         }
 
-        // تحويل بيانات الطلب من weborder إلى تنسيق الفاتورة
-        const invoiceItems = orderData.items ? orderData.items.map(item => ({
-            title: item.itemInfo?.titleAr || item.name || item.title || 'منتج غير محدد',
-            price: item.totalPrice || item.price || 0,
-            quantity: item.quantity || 1,
-            category: item.itemInfo?.category || item.category || 'عام',
-            isSpicy: item.isSpicy || false,
-            without: item.without || ''
-        })) : [{
-            title: 'طلب موقع',
-            price: orderData.totalPrice || 0,
-            quantity: orderData.itemsCount || 1,
-            category: 'عام',
-            isSpicy: false,
-            without: ''
-        }];
-
-        setItemsInOrder(invoiceItems);
-        setClient(orderData.address && orderData.address !== 'In The Branch' ? 'delivery' : 'Take Away');
-        setPayment(orderData.paymentMethod || 'Cash');
-        setDelivery(0); // يمكن تعديل هذا حسب الحاجة
-        setTaxs(0);
-        setDiscount(0);
-        setInvoiceId(webOrderCounter);
+        // استدعاء دالة إنشاء فاتورة الموقع الجديدة
+        await createWebsiteInvoice(orderData);
         
-        // إنشاء فاتورة مؤقتة مع source: 'web'
-        const tempInvoice = {
-            id: webOrderCounter,
-            client: orderData.address && orderData.address !== 'In The Branch' ? 'delivery' : 'Take Away',
-            items: invoiceItems,
-            total: invoiceItems.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-            discount: 0,
-            taxs: 0,
-            delivery: 0,
-            user: User.name,
-            payment: orderData.paymentMethod || 'Cash',
-            branch: shift.branch,
-            source: 'web' // تحديد مصدر الفاتورة
-        };
-        setSelectedInvoice(tempInvoice);
-        
-        // زيادة العداد
-        setWebOrderCounter(prev => prev + 1);
-        
+        // إغلاق الإشعارات وتمييز الإشعار كمقروء
         setShowNotifications(false);
-        setShowInvoice(true);
-        setAlert('تم تجهيز الفاتورة، الرجاء التأكيد من الأسفل');
+
+
         if (notificationId) markAsRead(notificationId);
-        
-        // لا نحذف العناصر هنا لأننا نريد عرضها في الفاتورة
-        // setItemsInOrder([]);
     };
 
-    const createInvoiceFromWebOrder = async (orderData) => {
-        if (!orderData || !Array.isArray(orderData.items) || orderData.items.length === 0) {
-            setAlert('بيانات الطلب غير صحيحة');
-            return;
-        }
-
-        setAlert('جاري إنشاء الفاتورة...');
-
-        try {
-            const invoiceItems = orderData.items.map(item => ({
-                title: item.itemInfo?.titleAr || item.name || item.title || 'منتج غير محدد',
-                price: item.totalPrice || item.price || 0,
-                quantity: item.quantity || 1,
-                category: item.itemInfo?.category || item.category || 'عام',
-                isSpicy: item.isSpicy || false,
-                without: item.without || ''
-            }));
-
-            const totalPrice = invoiceItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-            // إنشاء الفاتورة
-            const newInvoice = {
-                client: orderData.address && orderData.address !== 'In The Branch' ? 'delivery' : 'Take Away',
-                items: invoiceItems,
-                total: totalPrice,
-                discount: 0,
-                taxs: 0,
-                delivery: 0,
-                user: User.name,
-                payment: orderData.paymentMethod || orderData.payment || 'Cash',
-                branch: shift.branch,
-                id: invoices.length + 1,
-                source: 'web'
-            };
-
-            // إنشاء الطلب لحفظه في قاعدة البيانات
-            const newOrder = {
-                name: orderData.name || 'عميل موقع',
-                email: orderData.email || '',
-                image: '',
-                items: orderData.items,
-                totalPrice: totalPrice,
-                phoneNum: orderData.phoneNum || '',
-                address: orderData.address || 'In The Branch',
-                paymentMethod: orderData.paymentMethod || 'Cash',
-                status: 'completed',
-                source: 'web'
-            };
-
-            // حفظ الفاتورة في قاعدة البيانات
-            const resInvoice = await fetch('/api/invoices', {
-                method: "POST",
-                headers: {
-                    "Content-type": "application/json"
-                },
-                body: JSON.stringify(newInvoice)
-            });
-
-            // حفظ الطلب في قاعدة البيانات
-            const resOrder = await fetch('/api/orders', {
-                method: "POST",
-                headers: {
-                    "Content-type": "application/json"
-                },
-                body: JSON.stringify(newOrder)
-            });
-
-            if (resInvoice.ok && resOrder.ok) {
-                // إضافة الفاتورة للقائمة المحلية
-                let invoicesHandle = [...invoices, newInvoice];
-                setInvoices(invoicesHandle);
-                
-                // حفظ في localStorage
-                localStorage.setItem('invoices', JSON.stringify(invoicesHandle));
-                
-                // إزالة الطلب من قائمة طلبات الموقع الجديدة
-                setWebOrders(prev => prev.filter(order => order.order !== orderData));
-                
-                setAlert('تم إنشاء الفاتورة بنجاح');
-                
-                // عرض الفاتورة
-                setSelectedInvoice(newInvoice);
-                setItemsInOrder(invoiceItems);
-                setPayment(newInvoice.payment);
-                setDelivery(newInvoice.delivery);
-                setTaxs(newInvoice.taxs);
-                setClient(newInvoice.client);
-                setDiscount(newInvoice.discount);
-                setInvoiceId(newInvoice.id);
-                setShowInvoice(true);
-            } else {
-                setAlert('حدث خطأ في إنشاء الفاتورة');
-            }
-        } catch (error) {
-            console.log(error);
-            setAlert('حدث خطأ في إنشاء الفاتورة');
-        }
-    };
 
     const updateInvoice = () => {
-        if (itemsInOrder.length > 0) {
+        if (itemsInOrder.length > 0 && selectedInvoice) {
             const updatedInvoice = {
-                ...invoice,
+                ...selectedInvoice,
                 items: itemsInOrder,
                 total: mainTotalItemsPrice(),
                 discount: discount,
@@ -1080,6 +1132,17 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 inv.id === updatedInvoice.id ? updatedInvoice : inv
             );
             setInvoices(updatedInvoices);
+
+            // تحديث القوائم الصحيحة حسب المصدر
+            if (updatedInvoice.source === 'web') {
+                setWebInvoices(prev => prev.map(inv =>
+                    inv.id === updatedInvoice.id ? updatedInvoice : inv
+                ));
+            } else {
+                setCashierInvoices(prev => prev.map(inv =>
+                    inv.id === updatedInvoice.id ? updatedInvoice : inv
+                ));
+            }
 
             // تحديث في localStorage
             localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
@@ -1123,6 +1186,175 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
         const numStr = number.toString();
         return numStr.length >= 3 ? numStr.slice(-3) : numStr.padStart(3, '0');
     };
+    const PointsDiscount = (points) => {
+        const originalPoints = clientPoints; // النقاط الأصلية للعميل
+        const usedPoints = points; // النقاط المستخدمة في الطلب
+        const remainingPoints = originalPoints - usedPoints; // النقاط المتبقية
+        return remainingPoints;
+    }
+
+    // دالة حساب النقاط المتبقية بعد الخصم
+    const calculateRemainingPointsAfterDiscount = (originalPoints, usedPoints) => {
+        return Math.max(0, originalPoints - usedPoints);
+    }
+
+    // دالة حساب النقاط النهائية بعد الطلب
+    const calculateFinalPointsAfterOrder = (originalPoints, usedPoints, orderTotal) => {
+        const remainingAfterDiscount = calculateRemainingPointsAfterDiscount(originalPoints, usedPoints);
+        return remainingAfterDiscount;
+    }
+
+    // دالة حساب النقاط الجديدة من الطلب
+    const calculateNewPointsFromOrder = (orderTotal) => {
+        return Math.floor(orderTotal / 10); // كل 10 جنيه = نقطة واحدة
+    }
+
+    // دالة حساب النقاط المتبقية وتحديث قاعدة البيانات
+    const calculateAndUpdateRemainingPoints = async (usedPoints) => {
+        try {
+            // التأكد من وجود عميل محدد
+            if (!clientSelected || clientSelected === 'null') {
+                console.log('لا يوجد عميل محدد');
+                return false;
+            }
+
+            const clientObj = JSON.parse(clientSelected);
+            const originalPoints = clientObj.points || 0;
+            const remainingPoints = originalPoints - usedPoints;
+
+           
+
+            // تحديث نقاط العميل في قاعدة البيانات
+            const response = await fetch(`/api/clients/${clientObj._id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-type": 'application/json'
+                },
+                body: JSON.stringify({
+                    name: clientObj.name,
+                    phone: clientObj.phone,
+                    address: clientObj.address,
+                    delivery: clientObj.delivery,
+                    orders: clientObj.orders || [],
+                    points: remainingPoints // تحديث النقاط المتبقية
+                })
+            });
+
+            if (response.ok) {
+                console.log('تم تحديث نقاط العميل بنجاح');
+                
+                // تحديث حالة العميل المحلية
+                setClientPoints(remainingPoints);
+                
+                // تحديث قائمة العملاء
+                const updatedClients = clients.map(client => 
+                    client._id === clientObj._id 
+                        ? { ...client, points: remainingPoints }
+                        : client
+                );
+                setClients(updatedClients);
+                
+                setAlert(`تم خصم ${usedPoints} نقاط. النقاط المتبقية: ${remainingPoints}`);
+                return true;
+            } else {
+                console.error('فشل في تحديث نقاط العميل');
+                setAlert('حدث خطأ في تحديث نقاط العميل');
+                return false;
+            }
+        } catch (error) {
+            console.error('خطأ في حساب النقاط:', error);
+            setAlert('حدث خطأ في حساب النقاط');
+            return false;
+        }
+    };
+
+    // دالة إضافة نقاط جديدة للعميل (عند إكمال الطلب)
+    const addPointsToClient = async (orderTotal) => {
+        try {
+            // التأكد من وجود عميل محدد
+            if (!clientSelected || clientSelected === 'null') {
+                console.log('لا يوجد عميل محدد لإضافة النقاط');
+                return false;
+            }
+
+            const clientObj = JSON.parse(clientSelected);
+            const currentPoints = clientObj.points || 0;
+            
+            // حساب النقاط الجديدة (مثال: كل 10 جنيه = نقطة واحدة)
+            const pointsToAdd = Math.floor(orderTotal / 10);
+            const newTotalPoints = currentPoints + pointsToAdd;
+
+            console.log('إضافة النقاط:', {
+                orderTotal,
+                currentPoints,
+                pointsToAdd,
+                newTotalPoints
+            });
+
+            // تحديث نقاط العميل في قاعدة البيانات
+            const response = await fetch(`/api/clients/${clientObj._id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-type": 'application/json'
+                },
+                body: JSON.stringify({
+                    name: clientObj.name,
+                    phone: clientObj.phone,
+                    address: clientObj.address,
+                    delivery: clientObj.delivery,
+                    orders: clientObj.orders || [],
+                    points: newTotalPoints
+                })
+            });
+
+            if (response.ok) {
+             
+                
+                // تحديث حالة العميل المحلية
+                setClientPoints(newTotalPoints);
+                
+                // تحديث قائمة العملاء
+                const updatedClients = clients.map(client => 
+                    client._id === clientObj._id 
+                        ? { ...client, points: newTotalPoints }
+                        : client
+                );
+                setClients(updatedClients);
+                
+                setAlert(`تم إضافة ${pointsToAdd} نقاط للعميل. إجمالي النقاط: ${newTotalPoints}`);
+                return true;
+            } else {
+                console.error('فشل في إضافة النقاط');
+                setAlert('حدث خطأ في إضافة النقاط');
+                return false;
+            }
+        } catch (error) {
+            console.error('خطأ في إضافة النقاط:', error);
+            setAlert('حدث خطأ في إضافة النقاط');
+            return false;
+        }
+    };
+
+    useEffect(()=>{
+        fetch('/api/clients',{
+            method:"PUT",
+            headers: {
+                'Content-type': 'application/json'
+            },
+            body:JSON.stringify({name: clientName, phone: clientPhone, address: clientAddress, delivery: clientDelivery, points: clientPoints, _id: clients.length + 1 })
+        })
+    },[])
+
+
+
+
+
+
+
+
+
+
+
 
     return (
         <>
@@ -1140,11 +1372,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
                         </svg>
-<<<<<<< HEAD
-                        {/* عداد الإشعارات غير المقروءة */}
-=======
                         {/* عداد الطلبات غير المقروءة */}
->>>>>>> farestest
                         {unreadCount > 0 && (
                             <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                                 {unreadCount > 9 ? '9+' : unreadCount}
@@ -1192,14 +1420,14 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 </div>
             </div>
             <div className="orders w-full">
-                {/* أزرار التبديل بين أنواع الطلبات */}
+                {/* أزرار الفلترة */}
                 <div className="orderTypeTabs w-full flex items-center justify-center mb-6">
                     <div className="bg-gray-200 rounded-lg p-1 flex">
                         <button
                             onClick={() => {
-                                console.log('تم الضغط على طلبات الكاشير')
                                 setShowInvoices(true)
                                 setShowWebOrders(false)
+                                setInvoiceFilter('all')
                             }}
                             className={`px-4 py-2 rounded-md font-semibold transition-colors ${
                                 showInvoices && !showWebOrders 
@@ -1207,18 +1435,13 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                     : 'text-gray-600 hover:text-gray-800'
                             }`}
                         >
-                            طلبات الكاشير ({cashierInvoices.length})
+                            فواتير الكاشير ({cashierInvoices.length})
                         </button>
                         <button
                             onClick={() => {
-                                // إغلاق جميع النوافذ أولاً
-                                setShowInvoice(false)
-                                setShowAddExpense(false)
-                                setShowReport(false)
-                                setShowNotifications(false)
-                                // ثم فتح طلبات الموقع
                                 setShowInvoices(false)
                                 setShowWebOrders(true)
+                                setInvoiceFilter('all')
                             }}
                             className={`px-4 py-2 rounded-md font-semibold transition-colors ${
                                 showWebOrders && !showInvoices 
@@ -1226,18 +1449,13 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                     : 'text-gray-600 hover:text-gray-800'
                             }`}
                         >
-                            طلبات الموقع ({webOrders.length + webInvoices.length})
+                            فواتير الموقع ({webInvoices.length})
                         </button>
                         <button
                             onClick={() => {
-                                // إغلاق جميع النوافذ أولاً
-                                setShowInvoice(false)
-                                setShowAddExpense(false)
-                                setShowReport(false)
-                                setShowNotifications(false)
-                                // ثم فتح عرض الكل
                                 setShowInvoices(true)
                                 setShowWebOrders(true)
+                                // setInvoiceFilter('all')
                             }}
                             className={`px-4 py-2 rounded-md font-semibold transition-colors ${
                                 showInvoices && showWebOrders 
@@ -1245,10 +1463,12 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                     : 'text-gray-600 hover:text-gray-800'
                             }`}
                         >
-                            عرض الكل
+                            جميع الفواتير ({cashierInvoices.length + webInvoices.length})
                         </button>
                     </div>
                 </div>
+
+           
 
                 {showInvoices && (
                     <div className="invoices w-full flex items-start justify-center flex-col">
@@ -1292,6 +1512,9 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                         >
                                             عرض الفاتورة
                                         </button>
+                                        {invoice.source === 'web' && (
+                                            <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs font-bold">ويب #{formatOrderNumber(invoice.id)}</span>
+                                        )}
                                     </div>
                                 </div>
                             ))
@@ -1332,7 +1555,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => createInvoiceFromWebOrder(webOrder.order)}
+                                            onClick={() => createWebsiteInvoice(webOrder.order)}
                                             className="text-green-600 hover:text-green-800 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
                                         >
                                             إنشاء فاتورة
@@ -1358,32 +1581,41 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                     </div>
                                     <div>
                                         <h4 className='font-bold text-lg'>فاتورة #{formatOrderNumber(invoice.id)}</h4>
-                                        <p className='text-sm text-gray-600'>العميل: {invoice.client}</p>
-                                        <p className='text-sm text-gray-600'>المجموع: {invoice.total} ج.م</p>
-                                        <p className='text-sm text-gray-600'>الاصناف: {invoice.items.length} أصناف</p>
-                                        <p className='text-sm text-gray-600'>طريقة الدفع: {invoice.payment}</p>
+                                            <p className='text-sm text-gray-600'>العميل: {invoice.client}</p>
+                                            <p className='text-sm text-gray-600'>المجموع: {invoice.total} ج.م</p>
+                                            <p className='text-sm text-gray-600'>الاصناف: {invoice.items.length} أصناف</p>
+                                            <p className='text-sm text-gray-600'>طريقة الدفع: {invoice.payment}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setShowInvoice(!showInvoice)
+                                                setSelectedInvoice(invoice)
+                                                setItemsInOrder(invoice.items)
+                                                setPayment(invoice.payment)
+                                                setDelivery(invoice.delivery)
+                                                setTaxs(invoice.taxs)
+                                                setClient(invoice.client)
+                                                setDiscount(invoice.discount)
+                                                setInvoiceId(invoice.id)
+                                                setIndexToDelete(ind)
+                                            }}
+                                            className="text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
+                                        >
+                                            عرض الفاتورة
+                                        </button>
+                                    <button
+                                        onClick={() => createWebsiteInvoice(invoice)}
+                                        className="text-green-600 hover:text-green-800 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
+                                    >
+                                        إنشاء فاتورة
+                                    </button>
+                                    {invoice.source === 'web' && (
+                                        <span className="ml-2 px-2 py-1 rounded bg-blue-200 text-blue-800 text-xs font-bold">ويب #{formatOrderNumber(invoice.id)}</span>
+                                    )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => {
-                                            setShowInvoice(!showInvoice)
-                                            setSelectedInvoice(invoice)
-                                            setItemsInOrder(invoice.items)
-                                            setPayment(invoice.payment)
-                                            setDelivery(invoice.delivery)
-                                            setTaxs(invoice.taxs)
-                                            setClient(invoice.client)
-                                            setDiscount(invoice.discount)
-                                            setInvoiceId(invoice.id)
-                                            setIndexToDelete(ind)
-                                        }}
-                                        className="text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-lg text-sm font-semibold transition-colors"
-                                    >
-                                        عرض الفاتورة
-                                    </button>
-                                </div>
-                            </div>
                         ))}
                     </div>
                 )}
@@ -1530,7 +1762,14 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                     </div>
                 </div>
                 <div className="btns w-80 mt-3">
-                    <button onClick={() => sendOrderAndPrint()} className='submitBtn w-80'>طباعة الفاتورة</button>
+                    {selectedInvoice && selectedInvoice.source === 'web' ? (
+                        <button onClick={() => {
+                            setAlert('فواتير الموقع لا تطبع من الكاشير')
+                            setTimeout(() => setAlert(''), 2000)
+                        }} className='submitBtn w-80 bg-gray-500'>فواتير الموقع لا تطبع</button>
+                    ) : (
+                        <button onClick={() => createCashierInvoiceAndPrint()} className='submitBtn w-80'>طباعة الفاتورة</button>
+                    )}
 
                     {User.role === "المالك" && (
                         <>
@@ -1538,7 +1777,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                 <button onClick={() => DeleteInvoiceFromShift(indexToDelete)} className='text-textColor my-3 bg-red-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>حذف الفاتورة</button>
                             )}
                             {selectedInvoice && selectedInvoice.source === 'web' && (
-                                <button onClick={() => updateShift()} className='text-textColor my-3 bg-blue-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>تحديث الفواتير</button>
+                                    <button onClick={() => updateShift()} className='text-textColor my-3 bg-blue-500 font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>تحديث الفواتير</button>
                             )}
                             {showInvoices && (
                                 <button onClick={() => updateShift()} className='text-bgColor my-3 bg-mainColor font-bold text-base flex items-center justify-center py-1 px-4 border-2 rounded-full cursor-pointer w-full'>تحديث الفواتير</button>
@@ -1671,39 +1910,23 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
             {showNotifications && (
                 <>
                     {/* Overlay لإغلاق popup */}
-<<<<<<< HEAD
-                    <div 
-                        className="fixed inset-0 z-30"
-                        onClick={() => setShowNotifications(false)}
-                    ></div>
-                    
-=======
                     <div
                         className="fixed inset-0 z-30"
                         onClick={() => setShowNotifications(false)}
                     ></div>
->>>>>>> farestest
                     <div className="absolute top-20 left-6 z-40 bg-white border border-gray-300 rounded-lg shadow-xl w-96 max-h-96 overflow-hidden notification-popup">
                         <div className="bg-mainColor text-bgColor p-4 flex items-center justify-between">
                             <h3 className="font-bold text-lg">الطلبات</h3>
                             <div className="flex gap-2">
                                 {unreadCount > 0 && (
-<<<<<<< HEAD
-                                    <button 
-=======
                                     <button
->>>>>>> farestest
                                         onClick={markAllAsRead}
                                         className="text-sm bg-bgColor text-mainColor px-2 py-1 rounded hover:bg-opacity-80"
                                     >
                                         تحديد الكل كمقروء
                                     </button>
                                 )}
-<<<<<<< HEAD
-                                <button 
-=======
                                 <button
->>>>>>> farestest
                                     onClick={() => setShowNotifications(false)}
                                     className="text-bgColor hover:text-gray-200"
                                 >
@@ -1713,10 +1936,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                 </button>
                             </div>
                         </div>
-<<<<<<< HEAD
-                        
-=======
->>>>>>> farestest
                         <div className="max-h-80 overflow-y-auto">
                             {notifications.length === 0 ? (
                                 <div className="p-4 text-center text-gray-500">
@@ -1724,13 +1943,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                 </div>
                             ) : (
                                 notifications.map((notification) => (
-<<<<<<< HEAD
-                                    <div 
-                                        key={notification.id} 
-=======
                                     <div
                                         key={notification.id}
->>>>>>> farestest
                                         className={`p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors ${!notification.isRead ? 'bg-blue-50' : ''}`}
                                     >
                                         <div className="flex items-start justify-between">
@@ -1739,17 +1953,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                                     <div className={`w-2 h-2 rounded-full ${!notification.isRead ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
                                                     <h4 className="font-semibold text-sm">{notification.message}</h4>
                                                 </div>
-<<<<<<< HEAD
-                                                
-                                                {notification.order && (
-                                                    <div className="text-xs text-gray-600 space-y-1">
-                                                        <p><strong>نوع الطلب:</strong> {notification.order.type === 'pickup' ? 'استلام من الفرع' : notification.order.type === 'delivery' ? 'توصيل' : (notification.order.type || 'غير محدد')}</p>
-                                                        <p><strong>المجموع:</strong> {(notification.order.totalPrice || notification.order.total || 0).toString()} ج.م</p>
-                                                        <p><strong>طريقة الدفع:</strong> {notification.order.paymentMethod || notification.order.payment || 'غير محدد'}</p>
-                                                        <p><strong>عدد المنتجات:</strong> {(notification.order.itemsCount || (notification.order.items ? notification.order.items.length : 0)).toString()} منتج</p>
-                                                        {notification.order.phone && (
-                                                            <p><strong>الهاتف:</strong> {notification.order.phone}</p>
-=======
                                                 {notification.order && (
                                                     <div className="text-xs text-gray-600 space-y-1">
                                                         <p><strong>نوع الطلب:</strong> {notification.order.address && notification.order.address !== 'In The Branch' ? 'توصيل' : 'استلام من الفرع'}</p>
@@ -1761,53 +1964,32 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                                         )}
                                                         {notification.order.address && notification.order.address !== 'In The Branch' && (
                                                             <p><strong>العنوان:</strong> {notification.order.address}</p>
->>>>>>> farestest
                                                         )}
                                                         {notification.order.timestamp && (
                                                             <p><strong>التاريخ:</strong> {notification.order.timestamp}</p>
                                                         )}
                                                     </div>
                                                 )}
-<<<<<<< HEAD
-                                                
-=======
->>>>>>> farestest
                                                 <p className="text-xs text-gray-400 mt-2">
                                                     {notification.timestamp ? notification.timestamp : new Date(notification.createdAt).toLocaleString('ar-EG')}
                                                 </p>
                                             </div>
-<<<<<<< HEAD
-                                            
-                                            <div className="flex flex-col gap-1 ml-2">
-                                                {!notification.isRead && (
-                                                    <button 
-=======
                                             <div className="flex flex-col gap-1 ml-2">
                                                 {!notification.isRead && (
                                                     <button
->>>>>>> farestest
                                                         onClick={() => markAsRead(notification.id)}
                                                         className="text-blue-500 hover:text-blue-700 text-xs"
                                                     >
                                                         تحديد كمقروء
                                                     </button>
                                                 )}
-<<<<<<< HEAD
-                                                <button 
-                                                    onClick={() => createInvoiceFromNotification(notification.order)}
-=======
                                                 <button
                                                     onClick={() => createInvoiceFromNotification(notification.order, notification.id)}
->>>>>>> farestest
                                                     className="text-green-500 hover:text-green-700 text-xs bg-green-50 px-2 py-1 rounded"
                                                 >
                                                     إنشاء فاتورة
                                                 </button>
-<<<<<<< HEAD
-                                                <button 
-=======
                                                 <button
->>>>>>> farestest
                                                     onClick={() => deleteNotification(notification.id)}
                                                     className="text-red-500 hover:text-red-700 text-xs"
                                                 >
@@ -1823,8 +2005,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                 </>
             )}
 
-<<<<<<< HEAD
-=======
             {/* Update Shift */}
             <div className="updateShift w-full flex items-start justify-center flex-col my-10">
                 <h2 className='text-xl mb-4 font-bold'>تحديث الوردية:</h2>
@@ -1940,6 +2120,23 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                             <h3>مجموع المبالغ المدفوعة</h3>
                                             <h3>{JSON.parse(clientSelected)?.orders.length > 0 ? JSON.parse(clientSelected).orders.map(order => order.total).reduce((a, b) => a + b) : 0} ج.م</h3>
                                         </div>
+                                        <div className="points w-full flex items-center justify-between">
+                                            <h3>النقاط المتبقية</h3>
+                                            <h3 className="text-green-600 font-bold">{JSON.parse(clientSelected)?.points || 0} نقطة</h3>
+                                        </div>
+                                        <div className="newPoints w-full flex items-center justify-between">
+                                            <h3>النقاط الجديدة من هذا الطلب</h3>
+                                            <h3 className="text-blue-600 font-bold">{calculateNewPointsFromOrder(subTotalItems(itemsInOrder))} نقطة</h3>
+                                        </div>
+                                        <div className="finalPoints w-full flex items-center justify-between">
+                                            <h3>النقاط بعد الخصم</h3>
+                                            <h3 className="text-purple-600 font-bold">
+                                                {calculateRemainingPointsAfterDiscount(
+                                                    JSON.parse(clientSelected)?.points || 0,
+                                                    discount * 10
+                                                )} نقطة
+                                            </h3>
+                                        </div>
                                     </div>
                                 </>
                             )}
@@ -2023,6 +2220,65 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                                 </div>
                             </div>
                         </div>
+                        
+                        {/* قسم استخدام النقاط */}
+                        {clientSelected && client === 'delivery' && (
+                            <div className="flex items-center mb-4 justify-between w-full">
+                                <h3 className='font-semibold'>استخدام النقاط</h3>
+                                <div className="points-section flex items-center justify-center gap-2">
+                                    <div className="text-sm text-green-600 font-bold">
+                                        رصيد: {JSON.parse(clientSelected)?.points || 0} نقطة
+                                    </div>
+                                    {discount > 0 && (
+                                        <div className="text-sm text-blue-600 font-bold">
+                                            النقاط المتبقية: {calculateRemainingPointsAfterDiscount(
+                                                JSON.parse(clientSelected)?.points || 0,
+                                                discount * 10
+                                            )} نقطة
+                                        </div>
+                                    )}
+                                    <div className="text-sm text-purple-600 font-bold">
+                                        النقاط النهائية: {calculateFinalPointsAfterOrder(
+                                            JSON.parse(clientSelected)?.points || 0,
+                                            discount * 10,
+                                            subTotalItems(itemsInOrder)
+                                        )} نقطة
+                                    </div>
+                                    <div className="Delevery flex items-center justify-center">
+                                        <div 
+                                            onClick={() => {
+                                                const clientObj = JSON.parse(clientSelected);
+                                                const availablePoints = clientObj.points || 0;
+                                                const maxDiscount = Math.floor(availablePoints / 10); // كل 10 نقاط = جنيه واحد
+                                                const currentTotal = subTotalItems(itemsInOrder);
+                                                const newDiscount = Math.min(maxDiscount, currentTotal);
+                                                setDiscount(newDiscount);
+                                                setAlert(`تم استخدام ${newDiscount * 10} نقطة للخصم`);
+                                            }} 
+                                            className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-green-500 hover:bg-green-500 hover:text-white"
+                                            title="استخدام النقاط للخصم"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                            </svg>
+                                        </div>
+                                        <h3 className='mx-2 text-sm'>خصم النقاط</h3>
+                                        <div 
+                                            onClick={() => {
+                                                setDiscount(0);
+                                                setAlert('تم إلغاء خصم النقاط');
+                                            }} 
+                                            className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-red-500 hover:bg-red-500 hover:text-white"
+                                            title="إلغاء خصم النقاط"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex font-bold text-lg items-center justify-between w-full ">
                             <h3>اجمالي الفاتورة</h3>
                             <h3>{mainTotalItemsPrice()} ج.م</h3>
@@ -2035,7 +2291,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                             </div>
                         </div>
                     </div>
-                    <button onClick={() => AddInvoice()} className='submitBtn w-full'>{alert ? alert : "إنشاء الفاتورة"}</button>
+                    <button onClick={() => createCashierInvoice()} className='submitBtn w-full'>{alert ? alert : "إنشاء فاتورة الكاشير"}</button>
                     {clientSelected && client !== 'Take Away' && (
                         <div className="loyalty-points flex flex-col items-end my-2">
                             <div className="text-sm font-bold mb-1">رصيد نقاط العميل: <span className="text-green-600">{loyaltyPoints}</span></div>
@@ -2058,7 +2314,6 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                     )}
                 </div>
             </div>
->>>>>>> farestest
         </>
     )
 }

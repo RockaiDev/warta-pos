@@ -142,7 +142,7 @@ export default function DashboardPage() {
     const totalSalaries = () => calculateTotal(filteredSalaries, "salary");
     const totalRefunds = () => totalIncome() - (totalExpenses() + totalSalaries());
     const totalOrders = () => filteredShifts.reduce((total, shift) => total + shift.invoices.length, 0);
-
+   
     // فلترة طلبات الويب الجديدة (التي لم يتم حفظها بعد)
     const filteredWebOrders = webOrders.filter(order => {
         const orderDate = new Date(order.createdAt);
@@ -181,10 +181,10 @@ export default function DashboardPage() {
 
 
 
-    const totalCombinedIncome = totalIncome() + totalWebOrdersMoney;
-    const totalWebOnlyIncome = totalWebOrdersMoney;
-    const totalWebExpenses = totalExpenses() + totalSalaries();
-    const totalNetProfit = totalCombinedIncome - totalWebExpenses;
+ const totalCombinedIncome = totalIncome() + totalWebOrdersMoney;
+   
+    const totalIncom = ( totalCombinedIncome + totalCashierOrdersMoney);
+   
     const exportedShifts = filteredShifts.map(shift => ({
         Day: formatDate(shift.createdAt),
         Close: formatDate(shift.updatedAt),
@@ -194,7 +194,9 @@ export default function DashboardPage() {
         TotalRefund: shiftTotalRefund(shift),
     }));
 
- 
+  const TotalNetProfit = totalIncom - ( totalSalaries() + totalExpenses()) ;
+
+
     return (
         <>
             <div className="filterBar">
@@ -214,10 +216,10 @@ export default function DashboardPage() {
             <div className="Info flex items-center justify-center sm:justify-start flex-wrap my-5 w-full">
                 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>مجموع الدخل</h2>
-                    <h3 className='text-xl text-blue-300 font-bold'>{totalIncome().toLocaleString()} ج.م</h3>
+                    <h3 className='text-xl text-blue-300 font-bold'>{totalIncom.toLocaleString()} ج.م</h3>
                     <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
                 </div>
-
+              
 
 
 
@@ -246,10 +248,10 @@ export default function DashboardPage() {
 </div>
 
 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-    <h2 className='text-2xl font-bold'>قيمة طلبات الكاشير</h2>
+    <h2 className='text-2xl font-bold'> قيمة طلبات الكاشير </h2>
     <h3 className='text-xl text-green-500 font-bold'>{totalCashierOrdersMoney.toLocaleString()} ج.م</h3>
-    <div className="color w-full p-2 bg-green-500 rounded-full"></div>
-</div>
+                    <div className="color w-full p-2 bg-green-500 rounded-full"></div>
+                </div>
 
 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
     <h2 className='text-2xl font-bold'>طلبات الموقع</h2>
@@ -257,11 +259,11 @@ export default function DashboardPage() {
     <div className="color w-full p-2 bg-purple-500 rounded-full"></div>
 </div>
 
-<div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
     <h2 className='text-2xl font-bold'>قيمة طلبات الموقع</h2>
     <h3 className='text-xl text-blue-500 font-bold'>{totalWebOrdersMoney.toLocaleString()} ج.م</h3>
     <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
-</div>
+                </div>
 
 
 
@@ -275,14 +277,14 @@ export default function DashboardPage() {
                                         <h3 className='text-xl text-purple-600 font-bold'>{totalWebOnlyIncome.toLocaleString()} ج.م</h3>
                                         <div className="color w-full p-2 bg-purple-600 rounded-full"></div>
                                     </div> */}
-                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                                    <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
 
 
-
-                    <h2 className='text-2xl font-bold'>صافي الربح الكلي</h2>
-                    <h3 className='text-xl text-green-600 font-bold'>{totalNetProfit.toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-green-600 rounded-full"></div>
-                </div>
+                                        
+                                        <h2 className='text-2xl font-bold'>صافي الربح الكلي</h2>
+                    <h3 className='text-xl text-green-600 font-bold'>{TotalNetProfit.toLocaleString()} ج.م</h3>
+                                        <div className="color w-full p-2 bg-green-600 rounded-full"></div>
+                                    </div>
 
 
 
@@ -340,7 +342,7 @@ export default function DashboardPage() {
                                         <h2 className='text-sm font-bold mb-2'>عدد الطلبات</h2>
                                         <h3 className='text-sm'>{report.invoices.length} طلب</h3>
                                     </div>
-
+                                    
                                 </div>
                                 <h3 className='text-xl font-bold'>الفواتير خلال الوردية: </h3>
                                 {report.invoices.map((invoice, ind) => (
