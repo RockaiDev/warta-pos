@@ -420,6 +420,8 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                             if (discount > 0) {
                                 const pointsUsed = Math.floor(discount * 10); // كل جنيه خصم = 10 نقاط
                                 await calculateAndUpdateRemainingPoints(pointsUsed);
+                                // تحديث قاعدة البيانات بعد خصم النقاط
+                                await updateClientPointsInDatabase(pointsUsed);
                             }
                             
                             // إضافة نقاط جديدة للطلب
@@ -595,6 +597,8 @@ const createWebsiteInvoice = async (orderData) => {
                     if (newInvoice.discount > 0) {
                         const pointsUsed = Math.floor(newInvoice.discount * 10);
                         await calculateAndUpdateRemainingPoints(pointsUsed);
+                        // تحديث قاعدة البيانات بعد خصم النقاط
+                        await updateClientPointsInDatabase(pointsUsed);
                     }
 
                     await addPointsToClient(totalPrice);
@@ -615,8 +619,7 @@ const createWebsiteInvoice = async (orderData) => {
             setInvoiceId(newInvoice.id);
             setShowInvoice(true);
             
-            // طباعة الفاتورة
-            window.print();
+            // إزالة الطباعة التلقائية - سيتم الطباعة من زرار الطباعة
         } else {
             setAlert('حدث خطأ في إنشاء فاتورة الموقع');
         }
@@ -711,6 +714,8 @@ const createWebsiteInvoice = async (orderData) => {
                         if (discount > 0) {
                             const pointsUsed = Math.floor(discount * 10); // كل جنيه خصم = 10 نقاط
                             await calculateAndUpdateRemainingPoints(pointsUsed);
+                            // تحديث قاعدة البيانات بعد خصم النقاط
+                            await updateClientPointsInDatabase(pointsUsed);
                         }
                         
                         // إضافة نقاط جديدة للطلب
@@ -748,7 +753,8 @@ const createWebsiteInvoice = async (orderData) => {
                 setDiscount(0)
                 setDelivery(0)
                 setTaxs(0)
-                window.print()
+                
+                // إزالة الطباعة من زرار فواتير الموقع
             }
         } catch (error) {
             console.log(error);
@@ -1335,6 +1341,69 @@ const createWebsiteInvoice = async (orderData) => {
         }
     };
 
+    // دالة تحديث قاعدة البيانات بعد خصم النقاط
+    const updateClientPointsInDatabase = async (usedPoints) => {
+        try {
+            // التأكد من وجود عميل محدد
+            if (!clientSelected || clientSelected === 'null') {
+                console.log('لا يوجد عميل محدد لتحديث النقاط');
+                return false;
+            }
+
+            const clientObj = JSON.parse(clientSelected);
+            const originalPoints = clientObj.points || 0;
+            const remainingPoints = Math.max(0, originalPoints - usedPoints);
+
+            console.log('تحديث النقاط في قاعدة البيانات:', {
+                originalPoints,
+                usedPoints,
+                remainingPoints
+            });
+
+            // تحديث نقاط العميل في قاعدة البيانات
+            const response = await fetch(`/api/clients/${clientObj._id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-type": 'application/json'
+                },
+                body: JSON.stringify({
+                    name: clientObj.name,
+                    phone: clientObj.phone,
+                    address: clientObj.address,
+                    delivery: clientObj.delivery,
+                    orders: clientObj.orders || [],
+                    points: remainingPoints
+                })
+            });
+
+            if (response.ok) {
+                console.log('تم تحديث نقاط العميل في قاعدة البيانات بنجاح');
+                
+                // تحديث حالة العميل المحلية
+                setClientPoints(remainingPoints);
+                
+                // تحديث قائمة العملاء
+                const updatedClients = clients.map(client => 
+                    client._id === clientObj._id 
+                        ? { ...client, points: remainingPoints }
+                        : client
+                );
+                setClients(updatedClients);
+                
+                setAlert(`تم خصم ${usedPoints} نقاط وتحديث قاعدة البيانات. النقاط المتبقية: ${remainingPoints}`);
+                return true;
+            } else {
+                console.error('فشل في تحديث نقاط العميل في قاعدة البيانات');
+                setAlert('حدث خطأ في تحديث نقاط العميل في قاعدة البيانات');
+                return false;
+            }
+        } catch (error) {
+            console.error('خطأ في تحديث نقاط العميل في قاعدة البيانات:', error);
+            setAlert('حدث خطأ في تحديث نقاط العميل في قاعدة البيانات');
+            return false;
+        }
+    };
+
     useEffect(()=>{
         fetch('/api/clients',{
             method:"PUT",
@@ -1762,14 +1831,7 @@ const createWebsiteInvoice = async (orderData) => {
                     </div>
                 </div>
                 <div className="btns w-80 mt-3">
-                    {selectedInvoice && selectedInvoice.source === 'web' ? (
-                        <button onClick={() => {
-                            setAlert('فواتير الموقع لا تطبع من الكاشير')
-                            setTimeout(() => setAlert(''), 2000)
-                        }} className='submitBtn w-80 bg-gray-500'>فواتير الموقع لا تطبع</button>
-                    ) : (
-                        <button onClick={() => createCashierInvoiceAndPrint()} className='submitBtn w-80'>طباعة الفاتورة</button>
-                    )}
+                    <button onClick={() => window.print()} className='submitBtn w-80'>طباعة الفاتورة</button>
 
                     {User.role === "المالك" && (
                         <>
