@@ -289,7 +289,7 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
                     source: 'cashier'
                 };
                 
-                // حفظ الفاتورة في قاعدة البيانات
+                // لما العميل يعمل الاوردر والكاشير ينشئ فاتورة هايحقظه في قاعدة البيانات
                 const resInvoice = await fetch('/api/invoices', {
                     method: "POST",
                     headers: {
@@ -1341,8 +1341,12 @@ const createWebsiteInvoice = async (orderData) => {
         }
     };
 
+
+
+
+                    
     // دالة تحديث قاعدة البيانات بعد خصم النقاط
-    const updateClientPointsInDatabase = async (usedPoints) => {
+    const L = async (usedPoints) => {
         try {
             // التأكد من وجود عميل محدد
             if (!clientSelected || clientSelected === 'null') {
@@ -1403,6 +1407,9 @@ const createWebsiteInvoice = async (orderData) => {
             return false;
         }
     };
+
+
+
 
     useEffect(()=>{
         fetch('/api/clients',{
@@ -1688,7 +1695,7 @@ const createWebsiteInvoice = async (orderData) => {
                         ))}
                     </div>
                 )}
-                {/* إغلاق div الخاص بقسم الطلبات */}
+            
             </div>
 
 
@@ -1831,7 +1838,10 @@ const createWebsiteInvoice = async (orderData) => {
                     </div>
                 </div>
                 <div className="btns w-80 mt-3">
-                    <button onClick={() => window.print()} className='submitBtn w-80'>طباعة الفاتورة</button>
+                    <button onClick={() =>{
+                         window.print()
+                        updateShift()
+                         }} className='submitBtn w-80'>طباعة الفاتورة</button>
 
                     {User.role === "المالك" && (
                         <>
@@ -1968,6 +1978,11 @@ const createWebsiteInvoice = async (orderData) => {
                 </div>
             </div>
 
+
+
+
+
+
             {/* Popup الطلبات */}
             {showNotifications && (
                 <>
@@ -2045,6 +2060,7 @@ const createWebsiteInvoice = async (orderData) => {
                                                         تحديد كمقروء
                                                     </button>
                                                 )}
+                                                {/* هنا بعمل فاتورة بعد لما ادوس هلي الزرار بتاع انشاء فاتورة في جزء بتاع الفاتورة */}
                                                 <button
                                                     onClick={() => createInvoiceFromNotification(notification.order, notification.id)}
                                                     className="text-green-500 hover:text-green-700 text-xs bg-green-50 px-2 py-1 rounded"
@@ -2343,7 +2359,7 @@ const createWebsiteInvoice = async (orderData) => {
                         )}
                         <div className="flex font-bold text-lg items-center justify-between w-full ">
                             <h3>اجمالي الفاتورة</h3>
-                            <h3>{mainTotalItemsPrice()} ج.م</h3>
+                            <h3>{mainTotalItemsPrice()   } ج.م</h3>
                         </div>
                         <div className="paymentMethod flex items-center justify-between w-full my-3">
                             <h2 className='text-lg font-semibold'>الدفع: </h2>
@@ -2353,7 +2369,29 @@ const createWebsiteInvoice = async (orderData) => {
                             </div>
                         </div>
                     </div>
-                    <button onClick={() => createCashierInvoice()} className='submitBtn w-full'>{alert ? alert : "إنشاء فاتورة الكاشير"}</button>
+                  <button
+  onClick={() => {
+    createCashierInvoice();
+
+    if (invoice.items && invoice.items.length > 0) {
+      setShowInvoice(!showInvoice);
+      setSelectedInvoice(invoice);
+      setItemsInOrder(invoice.items);
+      setPayment(invoice.payment);
+      setDelivery(invoice.delivery);
+      setTaxs(invoice.taxs);
+      setClient(invoice.client);
+      setDiscount(invoice.discount);
+      setInvoiceId(invoice.id);
+    } else {
+      
+    }
+  }}
+  className="submitBtn w-full"
+>
+  {alert ? alert : "إنشاء فاتورة الكاشير"}
+</button>
+
                     {clientSelected && client !== 'Take Away' && (
                         <div className="loyalty-points flex flex-col items-end my-2">
                             <div className="text-sm font-bold mb-1">رصيد نقاط العميل: <span className="text-green-600">{loyaltyPoints}</span></div>
