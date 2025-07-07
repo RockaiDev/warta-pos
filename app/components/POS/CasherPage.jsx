@@ -1831,7 +1831,7 @@ const createWebsiteInvoice = async (orderData) => {
                             <h6 className='text-xs text-gray-700'>الكاشير: {User.name}</h6>
                         </div>
                         <div className="details flex flex-col items-center justify-center mt-4">
-                            <p className='text-xs text-center'>90 عمارات الظباط - مصطفي كامل - الاسكندرية</p>
+                            {/* تم حذف العنوان بناءً على طلب العميل */}
                             <p className='text-sm text-center'>01279995354 - 035416691</p>
                             <h6 dir='rtl' className='mt-1 text-gray-700'>شكراً لزيارتكم</h6>
                         </div>

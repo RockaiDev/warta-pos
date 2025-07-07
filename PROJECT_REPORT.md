@@ -1,4 +1,4 @@
-# Barbary POS System - Project Report
+# Warta POS System - Project Report
 
 ## What We Built
 We developed a complete restaurant management system that handles both in-store orders and online orders. The system manages customers, tracks loyalty points, creates invoices, and provides detailed reports.
@@ -141,4 +141,8 @@ We developed a complete restaurant management system that handles both in-store 
 
 We transformed a basic cashier system into a comprehensive restaurant management platform. The system now handles all types of orders, manages customers effectively, and provides detailed business insights. All major issues have been resolved, and the system is ready for daily operations.
 
-The project demonstrates how proper planning, systematic problem-solving, and attention to detail can create a robust and user-friendly business solution. 
+The project demonstrates how proper planning, systematic problem-solving, and attention to detail can create a robust and user-friendly business solution.
+
+The Warta POS system is a complete restaurant management solution that integrates cashier operations with online ordering capabilities. The system manages customers, tracks loyalty points, creates invoices, and provides comprehensive business reports.
+
+The Warta POS system project successfully transformed a basic cashier system into a comprehensive restaurant management platform. All major technical challenges were resolved, and the system now provides a robust foundation for business operations. 

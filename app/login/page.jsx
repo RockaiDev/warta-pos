@@ -63,12 +63,17 @@ export default function Page() {
       }
     }
 
+
+     
+
+
     return (
       <section className='w-full h-full flex items-center justify-center p-5' style={{
         backgroundImage: `url(${BgImageLogin.src})`,
         backgroundSize: 'cover',
         backgroundPosition: "Center",
       }}>
+        
         <div className="loginForm w-full lg:w-8/12 bg-bgColor p-5 rounded-2xl shadow-2xl border">
           <div className="head flex items-center justify-between mb-5 lg:mb-10">
             <h2 className='text-base lg:text-2xl'>تسجيل دخول للمسخدمين المسجلين فقط</h2>
