@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 
-const itemSchema = new Schema({
+const WebitemSchema = new Schema({
     titleEn: String,
     titleAr: String,
     category: String,
@@ -13,12 +13,8 @@ const itemSchema = new Schema({
     description: String,
     points: Number,
     size: String ,
-    rate: {
-        type: Number,
-        default: 5,
-    },
 }, {timestamps: true})
 
-const Item = mongoose.models.Item || mongoose.model('Item', itemSchema)
+const WebItem = mongoose.models.WebItem || mongoose.model('WebItem', WebitemSchema)
 
-export default Item;
+export default WebItem;

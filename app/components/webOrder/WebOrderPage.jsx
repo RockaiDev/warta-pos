@@ -222,7 +222,7 @@ export default function WebOrdersPage() {
               }`}>
                 {selectedOrder.source === 'web' ? 'طلب ويب' : 'طلب كاشير'}
               </span>
-            </div>
+                  </div>
             
             <div className="mb-4 p-3 bg-gray-50 rounded">
               <p><strong>اسم العميل:</strong> {selectedOrder.name || "غير محدد"}</p>
@@ -230,7 +230,7 @@ export default function WebOrdersPage() {
               <p><strong>العنوان:</strong> {selectedOrder.address || "غير محدد"}</p>
               <p><strong>المجموع الإجمالي:</strong> {selectedOrder.totalPrice || 0} ج.م</p>
               <p><strong>تاريخ الطلب:</strong> {formatDateTime(selectedOrder.createdAt)}</p>
-            </div>
+                  </div>
             
             {renderOrderDetails(selectedOrder)}
           </div>

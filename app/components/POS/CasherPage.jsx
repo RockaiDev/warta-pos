@@ -47,8 +47,14 @@ export default function CasherPage({ shift, items, User, clientsFromDB, }) {
     const clist = [...new Set(items.map(item => item.category))];
 
     const priceInTheBranch = (prices) => {
-        let branchPrice = prices.find(price => price.branch === shift.branch)
-        return +branchPrice?.price
+        if (Array.isArray(prices)) {
+            let branchPrice = prices.find(price => price.branch === shift.branch)
+            return +branchPrice?.price
+        }
+        if (typeof prices === 'number') {
+            return prices
+        }
+        return 0
     }
 
     const totalIncome = () => {
