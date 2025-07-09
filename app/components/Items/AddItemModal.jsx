@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 
-const CLOUDINARY_UPLOAD_PRESET = 'Warta_pos'; // ضع هنا upload_preset الخاص بك
-const CLOUDINARY_CLOUD_NAME = 'dxkau0eb3'; // ضع هنا cloud name الخاص بك
+const CLOUDINARY_UPLOAD_PRESET = 'Warta_pos'; 
+const CLOUDINARY_CLOUD_NAME = 'dxkau0eb3'; 
 
 const MODES = {
     ADD: 'add',
@@ -30,6 +30,9 @@ export default function AddItemModal({ onClose, isPage }) {
     const [mode, setMode] = useState(MODES.ADD);
     const [items, setItems] = useState([]);
     const [selectedId, setSelectedId] = useState('');
+
+    // مرجع لحقل الصورة
+    const imageInputRef = React.useRef(null);
 
     useEffect(() => {
         fetch('/api/categories')
@@ -79,6 +82,13 @@ export default function AddItemModal({ onClose, isPage }) {
         }
     }, [selectedId, mode, items]);
 
+    useEffect(() => {
+        if (success) {
+            const timer = setTimeout(() => setSuccess(''), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [success]);
+
     function compressImage(file, quality = 0.4) {
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -103,6 +113,11 @@ export default function AddItemModal({ onClose, isPage }) {
             reader.readAsDataURL(file);
         });
     }
+
+
+
+
+
 
     async function uploadToCloudinary(file) {
         setLoading(true);
@@ -130,6 +145,7 @@ export default function AddItemModal({ onClose, isPage }) {
 
     const handleChange = (e) => {
         setForm({ ...form, [e.target.name]: e.target.value });
+        // أزل الكود الذي كان يمسح الصورة تلقائياً عند التعديل
     };
 
     const handleImageChange = (e) => {
@@ -140,12 +156,36 @@ export default function AddItemModal({ onClose, isPage }) {
         }
     };
 
+
+
+
+    
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
         setSuccess('');
         try {
+            let imageUrl = form.image;
+            // إذا كان هناك صورة جديدة تم اختيارها، ارفعها أولاً
+            if (imageFile) {
+                const compressed = await compressImage(imageFile);
+                const formData = new FormData();
+                formData.append('file', compressed);
+                formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+                const resCloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const dataCloud = await resCloud.json();
+                if (dataCloud.secure_url) {
+                    imageUrl = dataCloud.secure_url;
+                } else {
+                    setError('فشل رفع الصورة');
+                    setLoading(false);
+                    return;
+                }
+            }
             const payload = {
                 ...form,
                 price: form.price === '' ? undefined : Number(form.price),
@@ -154,7 +194,7 @@ export default function AddItemModal({ onClose, isPage }) {
                 titleAr: String(form.titleAr),
                 category: String(form.category),
                 showExtras: String(form.showExtras),
-                image: String(form.image),
+                image: String(imageUrl),
                 description: String(form.description),
                 size: String(form.size),
             };
@@ -187,6 +227,7 @@ export default function AddItemModal({ onClose, isPage }) {
                 });
                 setImageFile(null);
                 setSelectedId('');
+                if (imageInputRef.current) imageInputRef.current.value = '';
             } else if (res) {
                 setError('فشل في العملية');
             }
@@ -208,6 +249,7 @@ export default function AddItemModal({ onClose, isPage }) {
             if (res.ok) {
                 setSuccess('تم حذف الصنف بنجاح');
                 setSelectedId('');
+                if (imageInputRef.current) imageInputRef.current.value = '';
             } else {
                 setError('فشل في حذف الصنف');
             }
@@ -294,7 +336,7 @@ export default function AddItemModal({ onClose, isPage }) {
                         <div className="col-span-1 md:col-span-2 flex flex-col md:flex-row items-center gap-4 mt-2">
                             <div className="flex-1 w-full">
                                 <label className="font-semibold text-mainColor">الصورة</label>
-                                <input type="file" accept="image/*" onChange={handleImageChange} className="border p-3 rounded text-lg w-full" />
+                                <input type="file" accept="image/*" onChange={handleImageChange} className="border p-3 rounded-lg text-lg w-full focus:ring-2 focus:ring-mainColor transition-all" ref={imageInputRef} />
                             </div>
                             <div className="flex justify-center items-center w-full md:w-auto">
                                 {imageFile && (
