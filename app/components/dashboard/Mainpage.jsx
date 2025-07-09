@@ -163,7 +163,7 @@ export default function Mainpage() {
 
                 {section === 'AddItem' && (
                     <section className='mSection'>
-                        <h2>إضافة صنف جديد</h2>
+                       
                         {/* Content */}
                         <AddItemModal onClose={() => setSection('dashboard')} isPage={true} />
                     </section>

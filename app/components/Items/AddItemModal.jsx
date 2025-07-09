@@ -218,20 +218,20 @@ export default function AddItemModal({ onClose, isPage }) {
     };
 
     return (
-        <div className={isPage ? "w-full flex items-center justify-center bg-bgColor min-h-screen" : "fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"}>
-            <div className={isPage ? "bg-white rounded-3xl p-12 w-full min-h-[70vh] max-w-7xl my-10 relative border border-mainColor flex flex-col justify-start" : "bg-white rounded-xl shadow-lg p-6 w-full max-w-md relative"}>
+        <div className="w-full min-h-screen bg-bgColor flex flex-col items-center justify-center p-2 mb-20">
+            <div className="bg-white w-full max-w-5xl min-h-[70vh] flex flex-col justify-start p-4 md:p-10 rounded-none shadow-none border-0 mb-20">
                 <div className="flex flex-col items-center mb-6">
                     <Image src="/wartalogo.png" alt="logo" width={120} height={120} className="mb-2" />
-                    <h2 className="text-3xl font-extrabold text-mainColor mb-4">
+                    <h2 className="text-2xl md:text-3xl font-extrabold text-mainColor mb-4 text-center">
                         {mode === MODES.ADD && 'إضافة منتج موقع'}
                         {mode === MODES.EDIT && 'تعديل منتج موقع'}
                         {mode === MODES.DELETE && 'حذف منتج موقع'}
                     </h2>
                 </div>
-                <div className="flex gap-4 mb-8">
-                    <button onClick={() => { setMode(MODES.ADD); setSelectedId(''); setSuccess(''); setError(''); }} className={`px-8 py-3 rounded-full font-bold text-lg shadow-sm transition-all duration-200 ${mode === MODES.ADD ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>إضافة</button>
-                    <button onClick={() => { setMode(MODES.EDIT); setSuccess(''); setError(''); }} className={`px-8 py-3 rounded-full font-bold text-lg shadow-sm transition-all duration-200 ${mode === MODES.EDIT ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>تعديل</button>
-                    <button onClick={() => { setMode(MODES.DELETE); setSuccess(''); setError(''); }} className={`px-8 py-3 rounded-full font-bold text-lg shadow-sm transition-all duration-200 ${mode === MODES.DELETE ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>حذف</button>
+                <div className="flex flex-wrap gap-2 mb-8 justify-center">
+                    <button onClick={() => { setMode(MODES.ADD); setSelectedId(''); setSuccess(''); setError(''); }} className={`px-6 md:px-8 py-2 md:py-3 rounded-full font-bold text-base md:text-lg shadow-sm transition-all duration-200 ${mode === MODES.ADD ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>إضافة</button>
+                    <button onClick={() => { setMode(MODES.EDIT); setSuccess(''); setError(''); }} className={`px-6 md:px-8 py-2 md:py-3 rounded-full font-bold text-base md:text-lg shadow-sm transition-all duration-200 ${mode === MODES.EDIT ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>تعديل</button>
+                    <button onClick={() => { setMode(MODES.DELETE); setSuccess(''); setError(''); }} className={`px-6 md:px-8 py-2 md:py-3 rounded-full font-bold text-base md:text-lg shadow-sm transition-all duration-200 ${mode === MODES.DELETE ? 'bg-mainColor text-bgColor' : 'bg-bgColor text-mainColor border border-mainColor'}`}>حذف</button>
                 </div>
                 {mode !== MODES.ADD && (
                     <div className="mb-6">
@@ -244,7 +244,7 @@ export default function AddItemModal({ onClose, isPage }) {
                     </div>
                 )}
                 {mode !== MODES.DELETE && (
-                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 w-full mx-auto mb-16">
                         <div className="flex flex-col gap-1">
                             <label className="font-semibold text-mainColor">اسم الصنف بالعربي</label>
                             <input name="titleAr" value={form.titleAr} onChange={handleChange} placeholder="اسم الصنف بالعربي" className="border p-3 rounded text-lg" required />
@@ -291,19 +291,23 @@ export default function AddItemModal({ onClose, isPage }) {
                             <label className="font-semibold text-mainColor">الوصف</label>
                             <input name="description" value={form.description} onChange={handleChange} placeholder="الوصف" className="border p-3 rounded text-lg" />
                         </div>
-                        <div className="col-span-2 flex flex-col items-center gap-4 mt-2">
-                            <label className="font-semibold text-mainColor">الصورة</label>
-                            <input type="file" accept="image/*" onChange={handleImageChange} className="border p-3 rounded text-lg w-full" />
-                            {imageFile && (
-                                <img src={URL.createObjectURL(imageFile)} alt="item-preview" className="w-48 h-48 object-cover rounded-2xl shadow-lg border border-mainColor" />
-                            )}
-                            {form.image && !imageFile && (
-                                <img src={form.image} alt="item" className="w-48 h-48 object-cover rounded-2xl shadow-lg border border-mainColor" />
-                            )}
+                        <div className="col-span-1 md:col-span-2 flex flex-col md:flex-row items-center gap-4 mt-2">
+                            <div className="flex-1 w-full">
+                                <label className="font-semibold text-mainColor">الصورة</label>
+                                <input type="file" accept="image/*" onChange={handleImageChange} className="border p-3 rounded text-lg w-full" />
+                            </div>
+                            <div className="flex justify-center items-center w-full md:w-auto">
+                                {imageFile && (
+                                    <img src={URL.createObjectURL(imageFile)} alt="item-preview" className="w-40 h-40 md:w-48 md:h-48 object-cover rounded-2xl shadow-lg border border-mainColor" />
+                                )}
+                                {form.image && !imageFile && (
+                                    <img src={form.image} alt="item" className="w-40 h-40 md:w-48 md:h-48 object-cover rounded-2xl shadow-lg border border-mainColor" />
+                                )}
+                            </div>
                         </div>
-                        {error && <div className="text-red-500 text-sm col-span-2">{error}</div>}
-                        {success && <div className="text-green-600 text-sm col-span-2">{success}</div>}
-                        <button type="submit" className="bg-mainColor text-bgColor py-4 rounded-full mt-4 text-xl font-bold col-span-2 shadow-md hover:bg-opacity-90 transition-all duration-200" disabled={loading}>{loading ? 'جاري الحفظ...' : mode === MODES.EDIT ? 'تعديل' : 'حفظ'}</button>
+                        {error && <div className="text-red-500 text-sm md:col-span-2 col-span-1">{error}</div>}
+                        {success && <div className="text-green-600 text-sm md:col-span-2 col-span-1">{success}</div>}
+                        <button type="submit" className="bg-mainColor text-bgColor py-4 rounded-full mt-4 text-xl font-bold md:col-span-2 col-span-1 shadow-md hover:bg-opacity-90 transition-all duration-200 w-full" disabled={loading}>{loading ? 'جاري الحفظ...' : mode === MODES.EDIT ? 'تعديل' : 'حفظ'}</button>
                     </form>
                 )}
                 {mode === MODES.DELETE && (
