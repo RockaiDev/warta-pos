@@ -14,7 +14,7 @@ export default function DashboardPage() {
     const [filterBranch, setFilterBranch] = useState("All");
     const [webOrders, setWebOrders] = useState([]);
     const [casherOrders, setCasherOrders] = useState([]);
-    
+
     const [isLoadingWebOrders, setIsLoadingWebOrders] = useState(true);
 
     const now = new Date();
@@ -27,9 +27,6 @@ export default function DashboardPage() {
 
     const { expenses, invoices, salaries, shifts, branches } = useDataContext();
 
-    
-
-   
 
 
 
@@ -40,6 +37,12 @@ export default function DashboardPage() {
 
 
 
+
+
+
+    // Filter and aggregate dashboard data for POS system
+
+    // Filter data by date and branch
     const filterData = (start, end) => {
         const filterByDateAndBranch = (data, dateField) => {
             return data.filter(item => {
@@ -62,27 +65,14 @@ export default function DashboardPage() {
         );
     };
 
-  
-
-
-
-
-
-
-
-
-
+    // Fetch web and cashier orders from API
     useEffect(() => {
         const fetchWebOrders = async () => {
             try {
                 const res = await fetch('/api/weborder', { cache: 'no-store' });
                 const data = await res.json();
-                console.log(data.items);
-                
-                // فصل الطلبات حسب المصدر
                 const webOrdersData = data.items.filter(order => order.source === 'web');
                 const casherOrdersData = data.items.filter(order => !order.source || order.source === "cashier");
-                
                 setWebOrders(webOrdersData || []);
                 setCasherOrders(casherOrdersData || []);
             } catch (error) {
@@ -95,6 +85,7 @@ export default function DashboardPage() {
         fetchWebOrders();
     }, []);
 
+    // Re-filter data when dependencies change
     useEffect(() => {
         if (expenses && invoices && salaries && shifts && branches) {
             filterData(startDate, endDate);
@@ -109,15 +100,15 @@ export default function DashboardPage() {
         setStartDate(start);
         setEndDate(end);
     };
-    // هنا بجمع كل حاجة عشان احفظها عندي 
+
+    // Utility to sum a field in an array
     const calculateTotal = (data, field) => {
         return data.reduce((total, item) => total + +item[field], 0);
     };
-    // هنا مجموع الدخل بتاع الشيف 
-    const shiftTotalIncome = () => calculateTotal(report.invoices, "total");
-    // هنا مجموع مصروفات الشيف
-    const shiftTotalExpenses = () => calculateTotal(report.expenses, "value");
 
+    // Shift-level income and expenses
+    const shiftTotalIncome = () => calculateTotal(report.invoices, "total");
+    const shiftTotalExpenses = () => calculateTotal(report.expenses, "value");
     const shiftTotalRefund = (shift) => {
         const income = calculateTotal(shift.invoices, "total");
         const expenses = calculateTotal(shift.expenses, "value");
@@ -137,54 +128,42 @@ export default function DashboardPage() {
 
     const branchesName = branches.map(branch => branch.name);
 
-    const totalIncome = () => calculateTotal(filteredShifts.flatMap(shift => shift.invoices), "total");
+    // Aggregate data for dashboard
     const totalExpenses = () => calculateTotal(filteredShifts.flatMap(shift => shift.expenses), "value");
     const totalSalaries = () => calculateTotal(filteredSalaries, "salary");
-    const totalRefunds = () => totalIncome() - (totalExpenses() + totalSalaries());
+    const totalRefunds = () => totalIncom - (totalExpenses() + totalSalaries());
     const totalOrders = () => filteredShifts.reduce((total, shift) => total + shift.invoices.length, 0);
-   
-    // فلترة طلبات الويب الجديدة (التي لم يتم حفظها بعد)
+
+    // Filter new web and cashier orders by date and branch
     const filteredWebOrders = webOrders.filter(order => {
         const orderDate = new Date(order.createdAt);
         const branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
         return orderDate >= startDate && orderDate <= endDate && branchFilter;
     });
-
-    // فلترة طلبات الكاشير الجديدة
     const filteredCasherOrders = casherOrders.filter(order => {
         const orderDate = new Date(order.createdAt);
         const branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
         return orderDate >= startDate && orderDate <= endDate && branchFilter;
     });
 
-    // فصل الطلبات المحفوظة من قاعدة البيانات حسب المصدر
+    // Extract invoices from filtered shifts
     const allInvoicesFromDB = filteredShifts.flatMap(shift => shift.invoices);
-    
-    // طلبات الكاشير: التي لا تحتوي على source أو source !== 'web'
-    const cashierOrdersFromDB = allInvoicesFromDB.filter(invoice => 
-        !invoice.source || invoice.source !== 'web'
-    );
-    
-    // طلبات الموقع المحفوظة: التي تحتوي على source === 'web'
-    const webOrdersFromDB = allInvoicesFromDB.filter(invoice => 
-        invoice.source === 'web'
-    );
+    const cashierOrdersFromDB = allInvoicesFromDB.filter(invoice => !invoice.source || invoice.source !== 'web');
+    const webOrdersFromDB = allInvoicesFromDB.filter(invoice => invoice.source === 'web');
 
-    // إحصائيات الطلبات
-    const totalCashierOrders = cashierOrdersFromDB.length + filteredCasherOrders.length; // طلبات الكاشير من DB + طلبات الكاشير الجديدة
-    const totalWebOrdersCount = webOrdersFromDB.length + filteredWebOrders.length; // طلبات الموقع المحفوظة + طلبات الويب الجديدة
+    // Dashboard statistics
+    const totalCashierOrders = cashierOrdersFromDB.length + filteredCasherOrders.length;
+    const totalWebOrdersCount = webOrdersFromDB.length + filteredWebOrders.length;
 
-    // إحصائيات الأموال
-    const totalCashierOrdersMoney = calculateTotal(cashierOrdersFromDB, "total") + calculateTotal(filteredCasherOrders, "totalPrice");
-    const totalWebOrdersMoney = calculateTotal(webOrdersFromDB, "total") + calculateTotal(filteredWebOrders, "totalPrice");
+    // Clean income calculations
+    const totalIncomeFromShifts = calculateTotal(cashierOrdersFromDB, "total");
+    const totalIncomeFromNewCashierOrders = calculateTotal(filteredCasherOrders, "totalPrice");
+    const totalIncomeFromWebOrders = calculateTotal(webOrdersFromDB, "total") + calculateTotal(filteredWebOrders, "totalPrice");
 
+    // Only use shift-based income for main dashboard totals
+    const totalIncom = totalIncomeFromShifts;
+    const TotalNetProfit = totalIncom - (totalSalaries() + totalExpenses());
 
-
-
- const totalCombinedIncome = totalIncome() + totalWebOrdersMoney;
-   
-    const totalIncom = ( totalCombinedIncome + totalCashierOrdersMoney);
-   
     const exportedShifts = filteredShifts.map(shift => ({
         Day: formatDate(shift.createdAt),
         Close: formatDate(shift.updatedAt),
@@ -193,8 +172,6 @@ export default function DashboardPage() {
         Branch: shift.branch,
         TotalRefund: shiftTotalRefund(shift),
     }));
-
-  const TotalNetProfit = totalIncom - ( totalSalaries() + totalExpenses()) ;
 
 
     return (
@@ -219,18 +196,13 @@ export default function DashboardPage() {
                     <h3 className='text-xl text-blue-300 font-bold'>{totalIncom.toLocaleString()} ج.م</h3>
                     <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
                 </div>
-              
 
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                    <h2 className='text-2xl font-bold'>دخل الورديات</h2>
+                    <h3 className='text-xl text-orange-500 font-bold'>{totalIncomeFromShifts.toLocaleString()} ج.م</h3>
+                    <div className="color w-full p-2 bg-orange-500 rounded-full"></div>
+                </div>
 
-
-
-
-
-                {/* <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-                    <h2 className='text-2xl font-bold'>عدد طلبات الويب</h2>
-                    <h3 className='text-xl text-purple-700 font-bold'>{filteredWebOrders.length.toLocaleString()} طلب</h3>
-                    <div className="color w-full p-2 bg-purple-700 rounded-full"></div>
-                </div> */}
                 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>المصاريف</h2>
                     <h3 className='text-xl text-red-500 font-bold'>{totalExpenses().toLocaleString()} ج.م</h3>
@@ -242,49 +214,33 @@ export default function DashboardPage() {
                     <div className="color w-full p-2 bg-pink-500 rounded-full"></div>
                 </div>
                 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-    <h2 className='text-2xl font-bold'>طلبات الكاشير</h2>
-    <h3 className='text-xl text-yellow-500 font-bold'>{totalCashierOrders.toLocaleString()} طلب</h3>
-    <div className="color w-full p-2 bg-yellow-500 rounded-full"></div>
-</div>
-
-<div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-    <h2 className='text-2xl font-bold'> قيمة طلبات الكاشير </h2>
-    <h3 className='text-xl text-green-500 font-bold'>{totalCashierOrdersMoney.toLocaleString()} ج.م</h3>
-                    <div className="color w-full p-2 bg-green-500 rounded-full"></div>
+                    <h2 className='text-2xl font-bold'>طلبات الكاشير</h2>
+                    <h3 className='text-xl text-yellow-500 font-bold'>{totalCashierOrders.toLocaleString()} طلب</h3>
+                    <div className="color w-full p-2 bg-yellow-500 rounded-full"></div>
                 </div>
-
-<div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-    <h2 className='text-2xl font-bold'>طلبات الموقع</h2>
-    <h3 className='text-xl text-purple-500 font-bold'>{totalWebOrdersCount.toLocaleString()} طلب</h3>
-    <div className="color w-full p-2 bg-purple-500 rounded-full"></div>
-</div>
 
                 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-    <h2 className='text-2xl font-bold'>قيمة طلبات الموقع</h2>
-    <h3 className='text-xl text-blue-500 font-bold'>{totalWebOrdersMoney.toLocaleString()} ج.م</h3>
-    <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
+                    <h2 className='text-2xl font-bold'>طلبات الموقع</h2>
+                    <h3 className='text-xl text-purple-500 font-bold'>{(webOrdersFromDB.length + filteredWebOrders.length).toLocaleString()} طلب</h3>
+                    <div className="color w-full p-2 bg-purple-500 rounded-full"></div>
                 </div>
 
-
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                    <h2 className='text-2xl font-bold'>قيمة طلبات الموقع</h2>
+                    <h3 className='text-xl text-blue-500 font-bold'>{totalIncomeFromWebOrders.toLocaleString()} ج.م</h3>
+                    <div className="color w-full p-2 bg-blue-500 rounded-full"></div>
+                </div>
 
                 <div onClick={() => setShowShiftsList(!showShiftsList)} className="info w-72 h-32 cursor-pointer flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>الورديات</h2>
                     <h3 className='text-xl text-cyan-300 font-bold'>{filteredShifts.length} وردية</h3>
                     <div className="color w-full p-2 bg-cyan-500 rounded-full"></div>
                 </div>
-                {/* <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-                                        <h2 className='text-2xl font-bold'>الدخل من الموقع فقط</h2>
-                                        <h3 className='text-xl text-purple-600 font-bold'>{totalWebOnlyIncome.toLocaleString()} ج.م</h3>
-                                        <div className="color w-full p-2 bg-purple-600 rounded-full"></div>
-                                    </div> */}
-                                    <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
-
-
-                                        
-                                        <h2 className='text-2xl font-bold'>صافي الربح الكلي</h2>
+                <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
+                    <h2 className='text-2xl font-bold'>صافي الربح الكلي</h2>
                     <h3 className='text-xl text-green-600 font-bold'>{TotalNetProfit.toLocaleString()} ج.م</h3>
-                                        <div className="color w-full p-2 bg-green-600 rounded-full"></div>
-                                    </div>
+                    <div className="color w-full p-2 bg-green-600 rounded-full"></div>
+                </div>
 
 
 
@@ -342,7 +298,7 @@ export default function DashboardPage() {
                                         <h2 className='text-sm font-bold mb-2'>عدد الطلبات</h2>
                                         <h3 className='text-sm'>{report.invoices.length} طلب</h3>
                                     </div>
-                                    
+
                                 </div>
                                 <h3 className='text-xl font-bold'>الفواتير خلال الوردية: </h3>
                                 {report.invoices.map((invoice, ind) => (
