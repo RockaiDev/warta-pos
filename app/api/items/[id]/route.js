@@ -14,5 +14,5 @@ export async function DELETE(req, {params}) {
     const { id } = params
     await connectMongoDB()
     await Item.findByIdAndDelete(id)
-    return NextResponse({message:"Item Deleted"}, {status: 200})
+    return NextResponse.json({message: "Item Deleted"}, {status: 200})
 }

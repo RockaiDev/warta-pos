@@ -27,6 +27,19 @@ export default function ItemsPage() {
     const [lastdescription, setlastdescription] = useState('')
     const [editItemPermetion, setEditItemPermetion] = useState(false)
 
+    // Refresh items function
+    const refreshItems = async () => {
+        try {
+            const ResultItems = await fetch('/api/items', {
+                cache: 'no-store'
+            })
+            const items = await ResultItems.json()
+            setitems(items.items)
+        } catch (error) {
+            console.log(error);
+        }
+    }
+
 
     useEffect(() => {
         const getData = async () => {
@@ -143,7 +156,7 @@ export default function ItemsPage() {
                                 setlastcategory("")
                                 setlastdescription("")
                             }} className='text-red-500 bg-mainColor p-2 rounded-xl absolute top-5 left-5'><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
-                            <AddItem Ctgs={clist} Brns={branchesName} lasttitle={lasttitle} lastprices={lastprices} lastdescription={lastdescription} lastcategory={lastcategory} id={itemId} editItem={editItemPermetion} />
+                            <AddItem Ctgs={clist} Brns={branchesName} lasttitle={lasttitle} lastprices={lastprices} lastdescription={lastdescription} lastcategory={lastcategory} id={itemId} editItem={editItemPermetion} refreshItems={refreshItems} />
                         </>
                     )}
                 </div>
