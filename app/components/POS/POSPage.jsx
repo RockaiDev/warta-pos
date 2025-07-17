@@ -11,6 +11,7 @@ export default function POSPage({ User,client }) {
   const [branch, setbranch] = useState(User.branch)
   const [openShift, setOpenShit] = useState('')
   const [alert, setAlert] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const router = useRouter()
 
@@ -22,9 +23,12 @@ export default function POSPage({ User,client }) {
 
   const OpenShift = async (e) => {
     e.preventDefault()
+    if (isSubmitting) return // منع الضغط المتكرر
+    
+    setIsSubmitting(true)
     setAlert('جاري فتح الوردية..')
+    
     if (branch !== 'All') {
-
       try {
         const res = await fetch('/api/shifts', {
           method: "POST",
@@ -37,13 +41,19 @@ export default function POSPage({ User,client }) {
         if (res.ok) {
           setAlert("اختر الوردية فور فتحها")
           location.reload()
+        } else {
+          setIsSubmitting(false)
+          setAlert('حدث خطأ، حاول مرة أخرى')
         }
 
       } catch (error) {
         console.log(error);
+        setIsSubmitting(false)
+        setAlert('حدث خطأ، حاول مرة أخرى')
       }
     } else {
       setAlert('اختر الفرع')
+      setIsSubmitting(false)
     }
   }
 
@@ -80,7 +90,13 @@ export default function POSPage({ User,client }) {
                   </select>
                 </>
               )}
-              <button className='submitBtn' type='submit'>{alert ? alert : 'فتح وردية'}</button>
+              <button 
+                className='submitBtn' 
+                type='submit' 
+                disabled={isSubmitting}
+              >
+                {alert ? alert : 'فتح وردية'}
+              </button>
             </form>
           )}
           <div className='flex items-center justify-center flex-col'>

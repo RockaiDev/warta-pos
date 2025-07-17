@@ -2294,7 +2294,7 @@ const createWebsiteInvoice = async (orderData) => {
                         <div className="flex items-center mb-8 justify-between w-full">
                             <h3 className='font-semibold'>خصم 10%</h3>
                             <div className="Delevery flex items-center justify-center">
-                                <div onClick={() => setDiscount(Math.trunc(subTotalItems(itemsInOrder) - (subTotalItems(itemsInOrder) * (90 / 100))))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                                <div onClick={() => setDiscount(Math.trunc(subTotalItems(itemsInOrder) - (subTotalItems(itemsInOrder) * (80 / 100))))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
                                 <h3 className=' mx-2'>{discount}</h3>
                                 <div onClick={() => {
                                     if (discount >= 5) {

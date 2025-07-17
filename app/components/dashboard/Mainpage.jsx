@@ -14,26 +14,47 @@ import AddItemModal from '../Items/AddItemModal'
 
 export default function Mainpage() {
     const userData = sessionStorage.getItem("User")
-    const [section, setSection] = useState(JSON.parse(userData).role === 'إدارة' ? "dashboard" : 'POS')
+    const [section, setSection] = useState(() => {
+        if (!userData) return 'POS'
+        try {
+            const parsedUser = JSON.parse(userData)
+            return parsedUser?.role === 'إدارة' ? "dashboard" : 'POS'
+        } catch (error) {
+            console.error('Error parsing user data:', error)
+            return 'POS'
+        }
+    })
     const [openMenu, setOpenMenu] = useState(false)
     const [user, setUser] = useState(null)
     const [isLoading, setIsLoading] = useState(true)
     const [client, setClient] = useState()
     const [showAddItemModal, setShowAddItemModal] = useState(false)
 
-    const allAccessRole = ["المالك", "المدير العام", "مدير فرع", "إدارة"]
+    const allAccessRole = ["المالك", "المدير العام", "إدارة"]
 
     // console.log(client.);
 
     const router = useRouter()
 
     useEffect(() => {
-
         if (userData) {
-            setUser(JSON.parse(userData));
-            setIsLoading(false);
+            try {
+                const parsedUser = JSON.parse(userData);
+                setUser(parsedUser);
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+                // If user data is invalid, redirect to login
+                sessionStorage.clear();
+                router.push('/login');
+                return;
+            }
+        } else {
+            // If no user data, redirect to login
+            router.push('/login');
+            return;
         }
-    }, []);
+        setIsLoading(false);
+    }, [userData, router]);
 
 
     const LogOut = () => {
