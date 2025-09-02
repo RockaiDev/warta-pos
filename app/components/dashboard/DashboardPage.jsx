@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { useDataContext } from '../context/DataContext';
 
 
-export default function DashboardPage() {
+export default function DashboardPage({ User }) {
     const [filteredExpenses, setFilteredExpenses] = useState([]);
     const [filteredInvoices, setFilteredInvoices] = useState([]);
     const [filteredSalaries, setFilteredSalaries] = useState([]);
@@ -26,6 +26,18 @@ export default function DashboardPage() {
     const [printingReport, setPrintingReport] = useState(false);
 
     const { expenses, invoices, salaries, shifts, branches } = useDataContext();
+
+    // Role-based branch access control
+    const isManagementUser = User?.role === 'إدارة';
+    const userBranch = User?.branch;
+    const isRestrictedToBranch = isManagementUser && userBranch && userBranch !== 'All';
+    
+    // Set initial branch filter based on user role and branch
+    useEffect(() => {
+        if (isRestrictedToBranch) {
+            setFilterBranch(userBranch);
+        }
+    }, [isRestrictedToBranch, userBranch]);
 
 
 
@@ -47,7 +59,13 @@ export default function DashboardPage() {
         const filterByDateAndBranch = (data, dateField) => {
             return data.filter(item => {
                 const itemDate = new Date(item[dateField]);
-                const branchFilter = filterBranch === "All" || filterBranch === "" || item.branch === filterBranch;
+                // Apply role-based branch restriction
+                let branchFilter;
+                if (isRestrictedToBranch) {
+                    branchFilter = item.branch === userBranch;
+                } else {
+                    branchFilter = filterBranch === "All" || filterBranch === "" || item.branch === filterBranch;
+                }
                 return itemDate >= start && itemDate <= end && branchFilter;
             });
         };
@@ -59,7 +77,13 @@ export default function DashboardPage() {
             shifts.filter(shift => {
                 const shiftDate = new Date(shift.createdAt);
                 const isClosed = shift.status === "close";
-                const branchFilter = filterBranch === "All" || filterBranch === "" || shift.branch === filterBranch;
+                // Apply role-based branch restriction
+                let branchFilter;
+                if (isRestrictedToBranch) {
+                    branchFilter = shift.branch === userBranch;
+                } else {
+                    branchFilter = filterBranch === "All" || filterBranch === "" || shift.branch === filterBranch;
+                }
                 return shiftDate >= start && shiftDate <= end && isClosed && branchFilter;
             })
         );
@@ -90,7 +114,7 @@ export default function DashboardPage() {
         if (expenses && invoices && salaries && shifts && branches) {
             filterData(startDate, endDate);
         }
-    }, [startDate, endDate, filterBranch, expenses, invoices, salaries, shifts, branches]);
+    }, [startDate, endDate, filterBranch, expenses, invoices, salaries, shifts, branches, isRestrictedToBranch, userBranch]);
 
     if (!expenses || !invoices || !salaries || !shifts || !branches || isLoadingWebOrders) {
         return <Loading />;
@@ -122,6 +146,14 @@ export default function DashboardPage() {
         return new Date(date).toLocaleString("ar-EG", options);
     };
 
+    // Export data to Excel
+    const ExportClientsData = (data, fileName) => {
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Shifts");
+        XLSX.writeFile(wb, `${fileName}.xlsx`);
+    };
+
     const checkInvoice = (invoice) => {
         return filteredShifts.some(shift => shift.invoices.some(inv => inv._id === invoice._id));
     };
@@ -137,12 +169,24 @@ export default function DashboardPage() {
     // Filter new web and cashier orders by date and branch
     const filteredWebOrders = webOrders.filter(order => {
         const orderDate = new Date(order.createdAt);
-        const branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
+        // Apply role-based branch restriction
+        let branchFilter;
+        if (isRestrictedToBranch) {
+            branchFilter = order.branch === userBranch;
+        } else {
+            branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
+        }
         return orderDate >= startDate && orderDate <= endDate && branchFilter;
     });
     const filteredCasherOrders = casherOrders.filter(order => {
         const orderDate = new Date(order.createdAt);
-        const branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
+        // Apply role-based branch restriction
+        let branchFilter;
+        if (isRestrictedToBranch) {
+            branchFilter = order.branch === userBranch;
+        } else {
+            branchFilter = filterBranch === "All" || filterBranch === "" || order.branch === filterBranch;
+        }
         return orderDate >= startDate && orderDate <= endDate && branchFilter;
     });
 
@@ -173,6 +217,11 @@ export default function DashboardPage() {
         TotalRefund: shiftTotalRefund(shift),
     }));
 
+    // Add export button text based on user restrictions
+    const exportButtonText = isRestrictedToBranch 
+        ? `تصدير شيفتات فرع ${userBranch}` 
+        : 'تصدير الشيفتات';
+
 
     return (
         <>
@@ -180,16 +229,28 @@ export default function DashboardPage() {
                 <DateRangePicker onDateChange={handleDateChange} />
                 <div className="branch w-full mb-3 lg:mb-5">
                     {/* هنا بقوله اختار الفرع الي عايز تعمل علبه الحساب */}
-                    <select className='my-2 w-full' name="branch" id="branch" value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}>
+                    <select 
+                        className={`my-2 w-full ${isRestrictedToBranch ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                        name="branch" 
+                        id="branch" 
+                        value={filterBranch} 
+                        onChange={(e) => setFilterBranch(e.target.value)}
+                        disabled={isRestrictedToBranch}
+                    >
                         <option value="">اختر الفرع</option>
                         {branchesName.map((branch, ind) => (
                             <option key={ind} value={branch}>{branch}</option>
                         ))}
                         <option value="All">الكل</option>
                     </select>
+                    {isRestrictedToBranch && (
+                        <p className="text-sm text-gray-600 mt-1">
+                            يمكنك رؤية بيانات فرعك فقط: {userBranch}
+                        </p>
+                    )}
                 </div>
             </div>
-
+            
             <div className="Info flex items-center justify-center sm:justify-start flex-wrap my-5 w-full">
                 <div className="info w-72 h-32 flex flex-col m-2 items-start justify-between p-4 shadow-xl rounded-xl border bg-mainColor text-bgColor">
                     <h2 className='text-2xl font-bold'>مجموع الدخل</h2>
@@ -250,7 +311,12 @@ export default function DashboardPage() {
             {showShiftsList && (
                 <>
                     <div className="shiftsList w-full flex flex-col items-start justify-center">
-                        <h2 className='text-xl font-bold'>الورديات: </h2>
+                        <h2 className='text-xl font-bold'>
+                            الورديات: 
+                            {isRestrictedToBranch && (
+                                <span className="text-sm text-gray-600 ml-2">(فرع {userBranch} فقط)</span>
+                            )}
+                        </h2>
                         <div className="shifts flex flex-wrap items-center justify-center w-full">
                             {filteredShifts.map((shift, ind) => (
                                 <div onClick={() => {
@@ -356,7 +422,7 @@ export default function DashboardPage() {
                 )}
             </div>
             <div className="exportData my-5">
-                <button onClick={() => ExportClientsData(exportedShifts, `from ${formatDate(startDate)}`)} className='submitBtn'>تصدير الشيفتات</button>
+                <button onClick={() => ExportClientsData(exportedShifts, `from ${formatDate(startDate)}`)} className='submitBtn'>{exportButtonText}</button>
             </div>
         </>
     )

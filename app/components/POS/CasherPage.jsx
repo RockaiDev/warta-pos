@@ -2292,13 +2292,19 @@ const createWebsiteInvoice = async (orderData) => {
                             </div>
                         </div>
                         <div className="flex items-center mb-8 justify-between w-full">
-                            <h3 className='font-semibold'>خصم 10%</h3>
+                            <h3 className='font-semibold'>خصم {Math.round((discount / subTotalItems(itemsInOrder)) * 100) || 0}%</h3>
                             <div className="Delevery flex items-center justify-center">
-                                <div onClick={() => setDiscount(Math.trunc(subTotalItems(itemsInOrder) - (subTotalItems(itemsInOrder) * (90 / 100))))} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
+                                <div onClick={() => {
+                                    const total = subTotalItems(itemsInOrder);
+                                    const newDiscount = Math.trunc(total * 0.05) + discount;
+                                    setDiscount(newDiscount);
+                                }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4">   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /> </svg></div>
                                 <h3 className=' mx-2'>{discount}</h3>
                                 <div onClick={() => {
-                                    if (discount >= 5) {
-                                        setDiscount(0)
+                                    const total = subTotalItems(itemsInOrder);
+                                    const reduction = Math.trunc(total * 0.05);
+                                    if (discount >= reduction) {
+                                        setDiscount(discount - reduction);
                                     }
                                 }} className="QBtn cursor-pointer p-1 rounded-xl flex items-center justify-center border-2 border-blackColor hover:bg-blackColor hover:text-bgColor"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-4"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" /></svg>
                                 </div>
